@@ -29,6 +29,11 @@ typedef struct {
 #define CPU_DE_REF(c) ((unsigned short*)&(c)->D)
 #define CPU_HL_REF(c) ((unsigned short*)&(c)->H)
 
+#define CPU_AF(c) (*CPU_AF_REF(c))
+#define CPU_BC(c) (*CPU_BC_REF(c))
+#define CPU_DE(c) (*CPU_DE_REF(c))
+#define CPU_HL(c) (*CPU_HL_REF(c))
+
 #define BIT(v, index) (((v) >> (index)) & 1)
 
 #define CPU_FLAG_Z(f) BIT((f), 7)
@@ -133,7 +138,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x02:
         // LD (BC),A
-        cpu_write_mem(cpu, *CPU_BC_REF(cpu), &cpu->A, 1);
+        cpu_write_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -203,7 +208,7 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(*CPU_HL_REF(cpu), *CPU_BC_REF(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
+          add_16_bit(CPU_HL(cpu), CPU_BC(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
           cpu->PC += 1;
           num_cycles = 8;
@@ -212,7 +217,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x0a:
         // LD A,(BC)
-        cpu_read_mem(cpu, *CPU_BC_REF(cpu), &cpu->A, 1);
+        cpu_read_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -282,7 +287,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x12:
         // LD (DE),A
-        cpu_write_mem(cpu, *CPU_DE_REF(cpu), &cpu->A, 1);
+        cpu_write_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -352,7 +357,7 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(*CPU_HL_REF(cpu), *CPU_DE_REF(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
+          add_16_bit(CPU_HL(cpu), CPU_DE(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
           cpu->PC += 1;
           num_cycles = 8;
@@ -361,7 +366,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x1a:
         // LD A,(DE)
-        cpu_read_mem(cpu, *CPU_DE_REF(cpu), &cpu->A, 1);
+        cpu_read_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -441,15 +446,15 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x22:
         // LD (HL+),A
-        cpu_write_mem(cpu, *CPU_HL_REF(cpu), &cpu->A, 1);
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) + 1;
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x23:
         // INC HL
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) + 1;
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -529,7 +534,7 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(*CPU_HL_REF(cpu), *CPU_HL_REF(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
+          add_16_bit(CPU_HL(cpu), CPU_HL(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
           cpu->PC += 1;
           num_cycles = 8;
@@ -538,15 +543,15 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x2a:
         // LD A,(HL+)
-        cpu_read_mem(cpu, *CPU_HL_REF(cpu), &cpu->A, 1);
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) + 1;
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x2b:
         // DEC HL
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) - 1;
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -615,8 +620,8 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x32:
         // LD (HL-),A
-        cpu_read_mem(cpu, *CPU_HL_REF(cpu), &cpu->A, 1);
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) - 1;
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -632,11 +637,11 @@ void cpu_step_clock(Cpu* cpu) {
         // INC (HL)
         {
           unsigned char value;
-          cpu_read_mem(cpu, *CPU_HL_REF(cpu), &value, 1);
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
           unsigned char carry;
           unsigned char half_carry;
           add_16_bit(value, 1, CPU_HL_REF(cpu), &carry, &half_carry);
-          cpu->F = CPU_F(*CPU_HL_REF(cpu) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+          cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
           cpu->PC += 1;
           num_cycles = 12;
         }
@@ -646,11 +651,11 @@ void cpu_step_clock(Cpu* cpu) {
         // DEC (HL)
         {
           unsigned char value;
-          cpu_read_mem(cpu, *CPU_HL_REF(cpu), &value, 1);
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
           unsigned char borrow;
           unsigned char half_borrow;
           sub_16_bit(value, 1, CPU_HL_REF(cpu), &borrow, &half_borrow);
-          cpu->F = CPU_F(*CPU_HL_REF(cpu) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(cpu->F));
+          cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(cpu->F));
           cpu->PC += 1;
           num_cycles = 12;
         }
@@ -661,7 +666,7 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char value;
           cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
-          cpu_write_mem(cpu, *CPU_HL_REF(cpu), &value, 1);
+          cpu_write_mem(cpu, CPU_HL(cpu), &value, 1);
           cpu->PC += 2;
           num_cycles = 12;
         }
@@ -696,7 +701,7 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(*CPU_HL_REF(cpu), cpu->SP, CPU_HL_REF(cpu), &carry, &half_carry);
+          add_16_bit(CPU_HL(cpu), cpu->SP, CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
           cpu->PC += 1;
           num_cycles = 8;
@@ -705,8 +710,8 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x3a:
         // LD A,(HL-)
-        cpu_read_mem(cpu, *CPU_HL_REF(cpu), &cpu->A, 1);
-        *CPU_HL_REF(cpu) = *CPU_HL_REF(cpu) - 1;
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+        *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
         cpu->PC += 1;
         num_cycles = 8;
         break;
@@ -869,91 +874,105 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x46:
         // LD B,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x4e:
         // LD C,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x56:
         // LD D,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x5e:
         // LD E,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x66:
         // LD H,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x6e:
         // LD L,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x70:
         // LD (HL),B
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x71:
         // LD (HL),C
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x72:
         // LD (HL),D
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x73:
         // LD (HL),E
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x74:
         // LD (HL),H
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x75:
         // LD (HL),L
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x76:
         // HALT
+        // TODO
         cpu->PC += 1;
         num_cycles = 4;
         break;
 
       case 0x77:
         // LD (HL),A
-        cpu_write_mem(cpu, *CPU_HL_REF(cpu), &cpu->A, 1);
+        cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x7e:
         // LD A,(HL)
+        cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         cpu->PC += 1;
         num_cycles = 8;
         break;
