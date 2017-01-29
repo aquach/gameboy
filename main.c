@@ -1215,38 +1215,128 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0xa6:
         // AND (HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          cpu->A = cpu->A & value;
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
       case 0xae:
         // XOR (HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          cpu->A = cpu->A ^ value;
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
       case 0xb6:
         // OR (HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          cpu->A = cpu->A | value;
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
       case 0xbe:
         // CP (HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          unsigned char trash;
+          unsigned char borrow;
+          unsigned char half_borrow;
+          sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
+
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
-      case 0xc0:
-        // RET NZ
-        cpu->PC += 1;
-        num_cycles = 20/8;
+      case 0xc0: // RET NZ
+      case 0xc8: // RET Z
+      case 0xd0: // RET NC
+      case 0xd8: // RET C
+        {
+          bool ret;
+          switch (opcode) {
+            case 0xc0:
+              ret = !CPU_FLAG_Z(cpu->F);
+              break;
+            case 0xc8:
+              ret = CPU_FLAG_Z(cpu->F);
+              break;
+            case 0xd0:
+              ret = !CPU_FLAG_C(cpu->F);
+              break;
+            case 0xd8:
+              ret = CPU_FLAG_C(cpu->F);
+              break;
+            default:
+              assert(false);
+          }
+
+          if (ret) {
+            cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+            cpu->SP += 2;
+            num_cycles = 20;
+          } else {
+            num_cycles = 8;
+          }
+        }
         break;
 
-      case 0xc1:
-        // POP BC
-        cpu->PC += 1;
-        num_cycles = 12;
+      case 0xc9:
+        // RET
+        cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+        cpu->SP += 2;
+        num_cycles = 16;
+        break;
+
+      case 0xc1: // POP BC
+      case 0xd1: // POP DE
+      case 0xe1: // POP HL
+      case 0xf1: // POP AF
+        {
+          unsigned short* dest;
+          switch (opcode >> 4) {
+            case 12:
+              dest = CPU_BC_REF(cpu);
+              break;
+            case 13:
+              dest = CPU_DE_REF(cpu);
+              break;
+            case 14:
+              dest = CPU_HL_REF(cpu);
+              break;
+            case 15:
+              dest = CPU_AF_REF(cpu);
+              break;
+            default:
+              assert(false);
+          }
+
+          cpu_read_mem(cpu, cpu->SP, (unsigned char*)dest, 2);
+          cpu->SP += 2;
+
+          cpu->PC += 1;
+          num_cycles = 12;
+        }
         break;
 
       case 0xc2:
@@ -1267,10 +1357,35 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 24/12;
         break;
 
-      case 0xc5:
-        // PUSH BC
-        cpu->PC += 1;
-        num_cycles = 16;
+      case 0xc5: // PUSH BC
+      case 0xd5: // PUSH DE
+      case 0xe5: // PUSH HL
+      case 0xf5: // PUSH AF
+        {
+          unsigned short* src;
+          switch (opcode >> 4) {
+            case 12:
+              src = CPU_BC_REF(cpu);
+              break;
+            case 13:
+              src = CPU_DE_REF(cpu);
+              break;
+            case 14:
+              src = CPU_HL_REF(cpu);
+              break;
+            case 15:
+              src = CPU_AF_REF(cpu);
+              break;
+            default:
+              assert(false);
+          }
+
+          cpu->SP -= 2;
+          cpu_write_mem(cpu, cpu->SP, (unsigned char*)src, 2);
+
+          cpu->PC += 1;
+          num_cycles = 16;
+        }
         break;
 
       case 0xc6:
@@ -1279,22 +1394,43 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xc7:
-        // RST 00H
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
+      case 0xc7: // RST 00H
+      case 0xcf: // RST 08H
+      case 0xd7: // RST 10H
+      case 0xdf: // RST 18H
+      case 0xe7: // RST 20H
+      case 0xef: // RST 28H
+      case 0xf7: // RST 30H
+      case 0xff: // RST 38H
+        {
+          unsigned short dest;
+          switch (opcode) {
+            case 0xc7:
+              dest = 0x00;
+            case 0xcf:
+              dest = 0x08;
+            case 0xd7:
+              dest = 0x10;
+            case 0xdf:
+              dest = 0x18;
+            case 0xe7:
+              dest = 0x20;
+            case 0xef:
+              dest = 0x28;
+            case 0xf7:
+              dest = 0x30;
+            case 0xff:
+              dest = 0x38;
+            default:
+              assert(false);
+          }
 
-      case 0xc8:
-        // RET Z
-        cpu->PC += 1;
-        num_cycles = 20/8;
-        break;
+          cpu->SP -= 2;
+          cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
 
-      case 0xc9:
-        // RET
-        cpu->PC += 1;
-        num_cycles = 16;
+          cpu->PC = dest;
+          num_cycles = 16;
+        }
         break;
 
       case 0xca:
@@ -1327,24 +1463,6 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xcf:
-        // RST 08H
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
-      case 0xd0:
-        // RET NC
-        cpu->PC += 1;
-        num_cycles = 20/8;
-        break;
-
-      case 0xd1:
-        // POP DE
-        cpu->PC += 1;
-        num_cycles = 12;
-        break;
-
       case 0xd2:
         // JP NC,a16
         cpu->PC += 3;
@@ -1357,28 +1475,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 24/12;
         break;
 
-      case 0xd5:
-        // PUSH DE
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
       case 0xd6:
         // SUB d8
         cpu->PC += 2;
         num_cycles = 8;
-        break;
-
-      case 0xd7:
-        // RST 10H
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
-      case 0xd8:
-        // RET C
-        cpu->PC += 1;
-        num_cycles = 20/8;
         break;
 
       case 0xd9:
@@ -1405,21 +1505,9 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xdf:
-        // RST 18H
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
       case 0xe0:
         // LDH (a8),A
         cpu->PC += 2;
-        num_cycles = 12;
-        break;
-
-      case 0xe1:
-        // POP HL
-        cpu->PC += 1;
         num_cycles = 12;
         break;
 
@@ -1430,22 +1518,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xe5:
-        // PUSH HL
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
       case 0xe6:
         // AND d8
         cpu->PC += 2;
         num_cycles = 8;
-        break;
-
-      case 0xe7:
-        // RST 20H
-        cpu->PC += 1;
-        num_cycles = 16;
         break;
 
       case 0xe8:
@@ -1472,21 +1548,9 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xef:
-        // RST 28H
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
       case 0xf0:
         // LDH A,(a8)
         cpu->PC += 2;
-        num_cycles = 12;
-        break;
-
-      case 0xf1:
-        // POP AF
-        cpu->PC += 1;
         num_cycles = 12;
         break;
 
@@ -1502,22 +1566,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 4;
         break;
 
-      case 0xf5:
-        // PUSH AF
-        cpu->PC += 1;
-        num_cycles = 16;
-        break;
-
       case 0xf6:
         // OR d8
         cpu->PC += 2;
         num_cycles = 8;
-        break;
-
-      case 0xf7:
-        // RST 30H
-        cpu->PC += 1;
-        num_cycles = 16;
         break;
 
       case 0xf8:
@@ -1548,12 +1600,6 @@ void cpu_step_clock(Cpu* cpu) {
         // CP d8
         cpu->PC += 2;
         num_cycles = 8;
-        break;
-
-      case 0xff:
-        // RST 38H
-        cpu->PC += 1;
-        num_cycles = 16;
         break;
 
       default:
