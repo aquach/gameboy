@@ -756,40 +756,115 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 4;
         break;
 
-      case 0x40:
-        // LD B,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+      case 0x40: // LD B,B
+      case 0x41: // LD B,C
+      case 0x42: // LD B,D
+      case 0x43: // LD B,E
+      case 0x44: // LD B,H
+      case 0x45: // LD B,L
+      case 0x47: // LD B,A
+      case 0x48: // LD C,B
+      case 0x49: // LD C,C
+      case 0x4a: // LD C,D
+      case 0x4b: // LD C,E
+      case 0x4c: // LD C,H
+      case 0x4d: // LD C,L
+      case 0x4f: // LD C,A
+      case 0x50: // LD D,B
+      case 0x51: // LD D,C
+      case 0x52: // LD D,D
+      case 0x53: // LD D,E
+      case 0x54: // LD D,H
+      case 0x55: // LD D,L
+      case 0x57: // LD D,A
+      case 0x58: // LD E,B
+      case 0x59: // LD E,C
+      case 0x5a: // LD E,D
+      case 0x5b: // LD E,E
+      case 0x5c: // LD E,H
+      case 0x5d: // LD E,L
+      case 0x5f: // LD E,A
+      case 0x60: // LD H,B
+      case 0x61: // LD H,C
+      case 0x62: // LD H,D
+      case 0x63: // LD H,E
+      case 0x64: // LD H,H
+      case 0x65: // LD H,L
+      case 0x67: // LD H,A
+      case 0x68: // LD L,B
+      case 0x69: // LD L,C
+      case 0x6a: // LD L,D
+      case 0x6b: // LD L,E
+      case 0x6c: // LD L,H
+      case 0x6d: // LD L,L
+      case 0x6f: // LD L,A
+      case 0x78: // LD A,B
+      case 0x79: // LD A,C
+      case 0x7a: // LD A,D
+      case 0x7b: // LD A,E
+      case 0x7c: // LD A,H
+      case 0x7d: // LD A,L
+      case 0x7f: // LD A,A
+        {
+          unsigned char high_nibble = opcode >> 4;
+          unsigned char low_nibble = opcode & 0xf;
 
-      case 0x41:
-        // LD B,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char* dest;
+          switch (high_nibble) {
+            case 4:
+              if (low_nibble <= 7)
+                dest = &cpu->B;
+              else
+                dest = &cpu->C;
+              break;
+            case 5:
+              if (low_nibble <= 7)
+                dest = &cpu->D;
+              else
+                dest = &cpu->E;
+              break;
+            case 6:
+              if (low_nibble <= 7)
+                dest = &cpu->H;
+              else
+                dest = &cpu->L;
+              break;
+            case 7:
+              dest = &cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x42:
-        // LD B,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char* src;
+          switch (low_nibble % 8) {
+            case 0:
+              dest = &cpu->B;
+              break;
+            case 1:
+              dest = &cpu->C;
+              break;
+            case 2:
+              dest = &cpu->D;
+              break;
+            case 3:
+              dest = &cpu->E;
+              break;
+            case 4:
+              dest = &cpu->H;
+              break;
+            case 5:
+              dest = &cpu->L;
+              break;
+            case 7:
+              dest = &cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x43:
-        // LD B,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x44:
-        // LD B,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x45:
-        // LD B,L
-        cpu->PC += 1;
-        num_cycles = 4;
+          *dest = *src;
+        }
         break;
 
       case 0x46:
@@ -798,94 +873,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0x47:
-        // LD B,A
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x48:
-        // LD C,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x49:
-        // LD C,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x4a:
-        // LD C,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x4b:
-        // LD C,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x4c:
-        // LD C,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x4d:
-        // LD C,L
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
       case 0x4e:
         // LD C,(HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x4f:
-        // LD C,A
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x50:
-        // LD D,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x51:
-        // LD D,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x52:
-        // LD D,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x53:
-        // LD D,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x54:
-        // LD D,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x55:
-        // LD D,L
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x56:
@@ -894,94 +885,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0x57:
-        // LD D,A
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x58:
-        // LD E,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x59:
-        // LD E,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x5a:
-        // LD E,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x5b:
-        // LD E,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x5c:
-        // LD E,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x5d:
-        // LD E,L
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
       case 0x5e:
         // LD E,(HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x5f:
-        // LD E,A
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x60:
-        // LD H,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x61:
-        // LD H,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x62:
-        // LD H,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x63:
-        // LD H,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x64:
-        // LD H,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x65:
-        // LD H,L
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x66:
@@ -990,58 +897,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0x67:
-        // LD H,A
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x68:
-        // LD L,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x69:
-        // LD L,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x6a:
-        // LD L,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x6b:
-        // LD L,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x6c:
-        // LD L,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x6d:
-        // LD L,L
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
       case 0x6e:
         // LD L,(HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x6f:
-        // LD L,A
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x70:
@@ -1093,52 +952,10 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0x78:
-        // LD A,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x79:
-        // LD A,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x7a:
-        // LD A,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x7b:
-        // LD A,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x7c:
-        // LD A,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x7d:
-        // LD A,L
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
       case 0x7e:
         // LD A,(HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x7f:
-        // LD A,A
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x80:
