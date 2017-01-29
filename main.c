@@ -1339,15 +1339,41 @@ void cpu_step_clock(Cpu* cpu) {
         }
         break;
 
-      case 0xc2:
-        // JP NZ,a16
-        cpu->PC += 3;
-        num_cycles = 16/12;
+      case 0xc2: // JP NZ,a16
+      case 0xca: // JP Z,a16
+      case 0xd2: // JP NC,a16
+      case 0xda: // JP C,a16
+        {
+          bool jump;
+          switch (opcode) {
+            case 0xca:
+              jump = !CPU_FLAG_Z(cpu->F);
+              break;
+            case 0xc2:
+              jump = CPU_FLAG_Z(cpu->F);
+              break;
+            case 0xd2:
+              jump = !CPU_FLAG_C(cpu->F);
+              break;
+            case 0xda:
+              jump = CPU_FLAG_C(cpu->F);
+              break;
+            default:
+              assert(false);
+          }
+
+          if (jump) {
+            cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
+            num_cycles = 16;
+          } else {
+            num_cycles = 12;
+          }
+        }
         break;
 
       case 0xc3:
         // JP a16
-        cpu->PC += 3;
+        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
         num_cycles = 16;
         break;
 
@@ -1433,12 +1459,6 @@ void cpu_step_clock(Cpu* cpu) {
         }
         break;
 
-      case 0xca:
-        // JP Z,a16
-        cpu->PC += 3;
-        num_cycles = 16/12;
-        break;
-
       case 0xcb:
         // PREFIX CB
         cpu->PC += 1;
@@ -1463,11 +1483,6 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0xd2:
-        // JP NC,a16
-        cpu->PC += 3;
-        num_cycles = 16/12;
-        break;
 
       case 0xd4:
         // CALL NC,a16
@@ -1485,12 +1500,6 @@ void cpu_step_clock(Cpu* cpu) {
         // RETI
         cpu->PC += 1;
         num_cycles = 16;
-        break;
-
-      case 0xda:
-        // JP C,a16
-        cpu->PC += 3;
-        num_cycles = 16/12;
         break;
 
       case 0xdc:
