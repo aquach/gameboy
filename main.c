@@ -977,52 +977,56 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 8;
         break;
 
-      case 0x80:
-        // ADD A,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+      case 0x80: // ADD A,B
+      case 0x81: // ADD A,C
+      case 0x82: // ADD A,D
+      case 0x83: // ADD A,E
+      case 0x84: // ADD A,H
+      case 0x85: // ADD A,L
+      case 0x87: // ADD A,A
+        {
+          unsigned char lower_nibble = opcode & 0xf;
 
-      case 0x81:
-        // ADD A,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char source;
+          switch (lower_nibble) {
+            case 0:
+              source = cpu->B;
+              break;
+            case 1:
+              source = cpu->C;
+              break;
+            case 2:
+              source = cpu->D;
+              break;
+            case 3:
+              source = cpu->E;
+              break;
+            case 4:
+              source = cpu->H;
+              break;
+            case 5:
+              source = cpu->L;
+              break;
+            case 7:
+              source = cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x82:
-        // ADD A,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x83:
-        // ADD A,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x84:
-        // ADD A,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x85:
-        // ADD A,L
-        cpu->PC += 1;
-        num_cycles = 4;
+          unsigned char carry;
+          unsigned char half_carry;
+          add_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+          cpu->PC += 1;
+          num_cycles = 4;
+        }
         break;
 
       case 0x86:
         // ADD A,(HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x87:
-        // ADD A,A
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x88:
@@ -1073,52 +1077,56 @@ void cpu_step_clock(Cpu* cpu) {
         num_cycles = 4;
         break;
 
-      case 0x90:
-        // SUB B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+      case 0x90: // SUB A,B
+      case 0x91: // SUB A,C
+      case 0x92: // SUB A,D
+      case 0x93: // SUB A,E
+      case 0x94: // SUB A,H
+      case 0x95: // SUB A,L
+      case 0x97: // SUB A,A
+        {
+          unsigned char lower_nibble = opcode & 0xf;
 
-      case 0x91:
-        // SUB C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char source;
+          switch (lower_nibble) {
+            case 0:
+              source = cpu->B;
+              break;
+            case 1:
+              source = cpu->C;
+              break;
+            case 2:
+              source = cpu->D;
+              break;
+            case 3:
+              source = cpu->E;
+              break;
+            case 4:
+              source = cpu->H;
+              break;
+            case 5:
+              source = cpu->L;
+              break;
+            case 7:
+              source = cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x92:
-        // SUB D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x93:
-        // SUB E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x94:
-        // SUB H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x95:
-        // SUB L
-        cpu->PC += 1;
-        num_cycles = 4;
+          unsigned char borrow;
+          unsigned char half_borrow;
+          sub_8_bit(cpu->A, source, &cpu->A, &borrow, &half_borrow);
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+          cpu->PC += 1;
+          num_cycles = 4;
+        }
         break;
 
       case 0x96:
         // SUB (HL)
         cpu->PC += 1;
         num_cycles = 8;
-        break;
-
-      case 0x97:
-        // SUB A
-        cpu->PC += 1;
-        num_cycles = 4;
         break;
 
       case 0x98:
