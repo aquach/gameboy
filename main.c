@@ -1025,56 +1025,88 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x86:
         // ADD A,(HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          unsigned char carry;
+          unsigned char half_carry;
+          add_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
-      case 0x88:
-        // ADC A,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+      case 0x88: // ADC A,B
+      case 0x89: // ADC A,C
+      case 0x8a: // ADC A,D
+      case 0x8b: // ADC A,E
+      case 0x8c: // ADC A,H
+      case 0x8d: // ADC A,L
+      case 0x8f: // ADC A,A
+        {
+          unsigned char lower_nibble = opcode & 0xf;
 
-      case 0x89:
-        // ADC A,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char source;
+          switch (lower_nibble) {
+            case 8:
+              source = cpu->B;
+              break;
+            case 9:
+              source = cpu->C;
+              break;
+            case 10:
+              source = cpu->D;
+              break;
+            case 11:
+              source = cpu->E;
+              break;
+            case 12:
+              source = cpu->H;
+              break;
+            case 13:
+              source = cpu->L;
+              break;
+            case 15:
+              source = cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x8a:
-        // ADC A,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char carry_1;
+          unsigned char half_carry_1;
+          add_8_bit(cpu->A, source, &cpu->A, &carry_1, &half_carry_1);
 
-      case 0x8b:
-        // ADC A,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char carry_2;
+          unsigned char half_carry_2;
+          add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
 
-      case 0x8c:
-        // ADC A,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x8d:
-        // ADC A,L
-        cpu->PC += 1;
-        num_cycles = 4;
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+          cpu->PC += 1;
+          num_cycles = 4;
+        }
         break;
 
       case 0x8e:
         // ADC A,(HL)
-        cpu->PC += 1;
-        num_cycles = 8;
-        break;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
 
-      case 0x8f:
-        // ADC A,A
-        cpu->PC += 1;
-        num_cycles = 4;
+          unsigned char carry_1;
+          unsigned char half_carry_1;
+          add_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+
+          unsigned char carry_2;
+          unsigned char half_carry_2;
+          add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
       case 0x90: // SUB A,B
@@ -1125,56 +1157,88 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x96:
         // SUB (HL)
-        cpu->PC += 1;
-        num_cycles = 8;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
+          unsigned char carry;
+          unsigned char half_carry;
+          sub_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
-      case 0x98:
-        // SBC A,B
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+      case 0x98: // SBC A,B
+      case 0x99: // SBC A,C
+      case 0x9a: // SBC A,D
+      case 0x9b: // SBC A,E
+      case 0x9c: // SBC A,H
+      case 0x9d: // SBC A,L
+      case 0x9f: // SBC A,A
+        {
+          unsigned char lower_nibble = opcode & 0xf;
 
-      case 0x99:
-        // SBC A,C
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char source;
+          switch (lower_nibble) {
+            case 8:
+              source = cpu->B;
+              break;
+            case 9:
+              source = cpu->C;
+              break;
+            case 10:
+              source = cpu->D;
+              break;
+            case 11:
+              source = cpu->E;
+              break;
+            case 12:
+              source = cpu->H;
+              break;
+            case 13:
+              source = cpu->L;
+              break;
+            case 15:
+              source = cpu->A;
+              break;
+            default:
+              assert(false);
+          }
 
-      case 0x9a:
-        // SBC A,D
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char borrow_1;
+          unsigned char half_borrow_1;
+          sub_8_bit(cpu->A, source, &cpu->A, &borrow_1, &half_borrow_1);
 
-      case 0x9b:
-        // SBC A,E
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
+          unsigned char borrow_2;
+          unsigned char half_borrow_2;
+          sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &borrow_2, &half_borrow_2);
 
-      case 0x9c:
-        // SBC A,H
-        cpu->PC += 1;
-        num_cycles = 4;
-        break;
-
-      case 0x9d:
-        // SBC A,L
-        cpu->PC += 1;
-        num_cycles = 4;
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
+          cpu->PC += 1;
+          num_cycles = 4;
+        }
         break;
 
       case 0x9e:
         // SBC A,(HL)
-        cpu->PC += 1;
-        num_cycles = 8;
-        break;
+        {
+          unsigned char value;
+          cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
 
-      case 0x9f:
-        // SBC A,A
-        cpu->PC += 1;
-        num_cycles = 4;
+          unsigned char carry_1;
+          unsigned char half_carry_1;
+          sub_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+
+          unsigned char carry_2;
+          unsigned char half_carry_2;
+          sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+
+          cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+          cpu->PC += 1;
+          num_cycles = 8;
+        }
         break;
 
       case 0xa0:
