@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define DEBUG 1
+
 typedef struct {
   unsigned char memory[64 * 1024];
 
@@ -162,35 +164,34 @@ void cpu_write_mem(Cpu* cpu, short address, unsigned char* data, int len) {
 void cpu_step_clock(Cpu* cpu) {
     unsigned char opcode;
     cpu_read_mem(cpu, cpu->PC, &opcode, 1);
+    cpu->PC++;
 
-    printf("Executing: 0x%02x\n", opcode);
+    if (DEBUG)
+      printf("Executing: 0x%02x\n", opcode);
 
     int num_cycles;
     switch (opcode) {
       case 0x00:
         // NOP
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
       case 0x01:
         // LD BC,d16
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)CPU_BC_REF(cpu), 2);
-        cpu->PC += 3;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_BC_REF(cpu), 2);
+        cpu->PC += 2;
         num_cycles = 12;
         break;
 
       case 0x02:
         // LD (BC),A
         cpu_write_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x03:
         // INC BC
         *CPU_BC_REF(cpu) = *CPU_BC_REF(cpu) + 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -201,7 +202,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->B, 1, &cpu->B, &carry, &half_carry);
           cpu->F = CPU_F(cpu->B == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -213,15 +213,14 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->B, 1, &cpu->B, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->B == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x06:
         // LD B,d8
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->B, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->B, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
@@ -240,9 +239,9 @@ void cpu_step_clock(Cpu* cpu) {
         // LD (a16),SP
         {
           unsigned short address;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&address, 2);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
+          cpu->PC += 2;
           cpu_write_mem(cpu, address, (unsigned char*)&cpu->SP, 2);
-          cpu->PC += 3;
           num_cycles = 20;
         }
         break;
@@ -254,7 +253,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_16_bit(CPU_HL(cpu), CPU_BC(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -262,14 +260,12 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x0a:
         // LD A,(BC)
         cpu_read_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x0b:
         // DEC BC
         *CPU_BC_REF(cpu) = *CPU_BC_REF(cpu) - 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -280,7 +276,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->C, 1, &cpu->C, &carry, &half_carry);
           cpu->F = CPU_F(cpu->C == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -292,15 +287,14 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->C, 1, &cpu->C, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->C == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x0e:
         // LD C,d8
-        cpu_read_mem(cpu, cpu->PC + 1, &cpu->C, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, &cpu->C, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
@@ -310,7 +304,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char bit = BIT(cpu->A, 0);
           cpu->A = (cpu->A >> 1) | (bit << 7);
           cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -318,28 +311,26 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x10:
         // STOP 0
         // TODO
-        cpu->PC += 2;
+        cpu->PC++;
         num_cycles = 4;
         break;
 
       case 0x11:
         // LD DE,d16
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)CPU_DE_REF(cpu), 2);
-        cpu->PC += 3;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_DE_REF(cpu), 2);
+        cpu->PC += 2;
         num_cycles = 12;
         break;
 
       case 0x12:
         // LD (DE),A
         cpu_write_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x13:
         // INC DE
         *CPU_DE_REF(cpu) = *CPU_DE_REF(cpu) + 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -350,7 +341,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->D, 1, &cpu->D, &carry, &half_carry);
           cpu->F = CPU_F(cpu->D == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -362,15 +352,14 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->D, 1, &cpu->D, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->D == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x16:
         // LD D,d8
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->D, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->D, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
@@ -380,7 +369,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char bit = BIT(cpu->A, 7);
           cpu->A = (cpu->A << 1) | CPU_FLAG_C(cpu->F);
           cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z is up for debate.
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -388,10 +376,10 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x18:
         // JR r8
         {
-          // TODO: is this correct?
           char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
-          cpu->PC = cpu->PC + offset;
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
+          cpu->PC++;
+          cpu->PC += offset;
           num_cycles = 12;
         }
         break;
@@ -403,7 +391,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_16_bit(CPU_HL(cpu), CPU_DE(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -411,14 +398,12 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x1a:
         // LD A,(DE)
         cpu_read_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x1b:
         // DEC DE
         *CPU_DE_REF(cpu) = *CPU_DE_REF(cpu) - 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -429,7 +414,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->E, 1, &cpu->E, &carry, &half_carry);
           cpu->F = CPU_F(cpu->E == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -441,15 +425,14 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->E, 1, &cpu->E, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->E == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x1e:
         // LD E,d8
-        cpu_read_mem(cpu, cpu->PC + 1, &cpu->E, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, &cpu->E, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
@@ -459,23 +442,41 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char bit = BIT(cpu->A, 0);
           cpu->A = (cpu->A >> 1) | (CPU_FLAG_C(cpu->F) << 7);
           cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is up for debate.
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
-      case 0x20:
-        // JR NZ,r8
+      case 0x20: // JR NZ,r8
+      case 0x28: // JR Z,r8
+      case 0x30: // JR NC,r8
+      case 0x38: // JR C,r8
         {
-          // TODO: is this correct?
           char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
+          cpu->PC++;
 
-          if (!CPU_FLAG_Z(cpu->F)) {
-            cpu->PC = cpu->PC + offset;
+          bool jump;
+          switch (opcode) {
+            case 0x20:
+              jump = !CPU_FLAG_Z(cpu->F);
+              break;
+            case 0x28:
+              jump = CPU_FLAG_Z(cpu->F);
+              break;
+            case 0x30:
+              jump = !CPU_FLAG_C(cpu->F);
+              break;
+            case 0x38:
+              jump = CPU_FLAG_C(cpu->F);
+              break;
+            default:
+              assert(false);
+          }
+
+          if (jump) {
+            cpu->PC += offset;
             num_cycles = 12;
           } else {
-            cpu->PC += 2;
             num_cycles = 8;
           }
         }
@@ -483,8 +484,8 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0x21:
         // LD HL,d16
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)CPU_HL_REF(cpu), 2);
-        cpu->PC += 3;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_HL_REF(cpu), 2);
+        cpu->PC++;
         num_cycles = 12;
         break;
 
@@ -492,14 +493,12 @@ void cpu_step_clock(Cpu* cpu) {
         // LD (HL+),A
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x23:
         // INC HL
         *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -510,7 +509,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->H, 1, &cpu->H, &carry, &half_carry);
           cpu->F = CPU_F(cpu->H == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -522,15 +520,14 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->H, 1, &cpu->H, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->H == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x26:
         // LD H,d8
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->H, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->H, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
@@ -550,26 +547,7 @@ void cpu_step_clock(Cpu* cpu) {
           }
 
           cpu->F = CPU_F(cpu->A == 0, CPU_FLAG_N(cpu->F), 0, do_second_addition ? 1 : 0);
-
-          cpu->PC += 1;
           num_cycles = 4;
-        }
-        break;
-
-      case 0x28:
-        // JR Z,r8
-        {
-          // TODO: is this correct?
-          char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
-
-          if (CPU_FLAG_Z(cpu->F)) {
-            cpu->PC = cpu->PC + offset;
-            num_cycles = 12;
-          } else {
-            cpu->PC += 2;
-            num_cycles = 8;
-          }
         }
         break;
 
@@ -580,7 +558,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_16_bit(CPU_HL(cpu), CPU_HL(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -589,14 +566,12 @@ void cpu_step_clock(Cpu* cpu) {
         // LD A,(HL+)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x2b:
         // DEC HL
         *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -607,7 +582,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->L, 1, &cpu->L, &carry, &half_carry);
           cpu->F = CPU_F(cpu->L == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -619,46 +593,27 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->L, 1, &cpu->L, &borrow, &half_borrow);
           cpu->F = CPU_F(cpu->L == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x2e:
         // LD L,d8
-        cpu_read_mem(cpu, cpu->PC + 1, &cpu->L, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, &cpu->L, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
       case 0x2f:
         // CPL
         cpu->A = ~cpu->A;
-        cpu->PC += 1;
         num_cycles = 4;
-        break;
-
-      case 0x30:
-        // JR NC,r8
-        {
-          // TODO: is this correct?
-          char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
-
-          if (!CPU_FLAG_C(cpu->F)) {
-            cpu->PC = cpu->PC + offset;
-            num_cycles = 12;
-          } else {
-            cpu->PC += 2;
-            num_cycles = 8;
-          }
-        }
         break;
 
       case 0x31:
         // LD SP,d16
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->SP, 2);
-        cpu->PC += 3;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->SP, 2);
+        cpu->PC += 2;
         num_cycles = 12;
         break;
 
@@ -666,14 +621,12 @@ void cpu_step_clock(Cpu* cpu) {
         // LD (HL-),A
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x33:
         // INC SP
         cpu->SP++;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -682,11 +635,12 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char value;
           cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+          cpu->PC++;
+
           unsigned char carry;
           unsigned char half_carry;
           add_16_bit(value, 1, CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 12;
         }
         break;
@@ -696,11 +650,11 @@ void cpu_step_clock(Cpu* cpu) {
         {
           unsigned char value;
           cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+
           unsigned char borrow;
           unsigned char half_borrow;
           sub_16_bit(value, 1, CPU_HL_REF(cpu), &borrow, &half_borrow);
           cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 12;
         }
         break;
@@ -709,9 +663,10 @@ void cpu_step_clock(Cpu* cpu) {
         // LD (HL),d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
+
           cpu_write_mem(cpu, CPU_HL(cpu), &value, 1);
-          cpu->PC += 2;
           num_cycles = 12;
         }
         break;
@@ -719,25 +674,7 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x37:
         // SCF
         cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, 0, 1);
-        cpu->PC += 1;
         num_cycles = 4;
-        break;
-
-      case 0x38:
-        // JR C,r8
-        {
-          // TODO: is this correct?
-          char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
-
-          if (CPU_FLAG_C(cpu->F)) {
-            cpu->PC = cpu->PC + offset;
-            num_cycles = 12;
-          } else {
-            cpu->PC += 2;
-            num_cycles = 8;
-          }
-        }
         break;
 
       case 0x39:
@@ -747,7 +684,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_16_bit(CPU_HL(cpu), cpu->SP, CPU_HL_REF(cpu), &carry, &half_carry);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -756,14 +692,12 @@ void cpu_step_clock(Cpu* cpu) {
         // LD A,(HL-)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
         *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x3b:
         // DEC SP
         cpu->SP--;
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -774,7 +708,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->A, 1, &cpu->A, &carry, &half_carry);
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -786,22 +719,20 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->A, 1, &cpu->A, &borrow, &half_borrow);
           cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 1, half_borrow, CPU_FLAG_C(cpu->F));
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
 
       case 0x3e:
         // LD A,d8
-        cpu_read_mem(cpu, cpu->PC + 1, &cpu->A, 1);
-        cpu->PC += 2;
+        cpu_read_mem(cpu, cpu->PC, &cpu->A, 1);
+        cpu->PC++;
         num_cycles = 8;
         break;
 
       case 0x3f:
         // CCF
         cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, 0, CPU_FLAG_C(cpu->F) ? 0 : 1);
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
@@ -914,7 +845,6 @@ void cpu_step_clock(Cpu* cpu) {
 
           *dest = *src;
 
-          cpu->PC += 1;
           num_cycles = 4;
         }
 
@@ -923,105 +853,90 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x46:
         // LD B,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x4e:
         // LD C,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x56:
         // LD D,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x5e:
         // LD E,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x66:
         // LD H,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x6e:
         // LD L,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x70:
         // LD (HL),B
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x71:
         // LD (HL),C
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x72:
         // LD (HL),D
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x73:
         // LD (HL),E
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x74:
         // LD (HL),H
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x75:
         // LD (HL),L
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x76:
         // HALT
         // TODO
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
       case 0x77:
         // LD (HL),A
         cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
       case 0x7e:
         // LD A,(HL)
         cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -1186,7 +1101,6 @@ void cpu_step_clock(Cpu* cpu) {
               assert(false);
           }
 
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -1201,7 +1115,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           add_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1221,7 +1134,6 @@ void cpu_step_clock(Cpu* cpu) {
           add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
 
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1236,7 +1148,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_carry;
           sub_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1256,7 +1167,6 @@ void cpu_step_clock(Cpu* cpu) {
           sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
 
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1269,7 +1179,6 @@ void cpu_step_clock(Cpu* cpu) {
 
           cpu->A = cpu->A & value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1282,7 +1191,6 @@ void cpu_step_clock(Cpu* cpu) {
 
           cpu->A = cpu->A ^ value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1295,7 +1203,6 @@ void cpu_step_clock(Cpu* cpu) {
 
           cpu->A = cpu->A | value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1311,7 +1218,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char half_borrow;
           sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
 
-          cpu->PC += 1;
           num_cycles = 8;
         }
         break;
@@ -1382,7 +1288,6 @@ void cpu_step_clock(Cpu* cpu) {
           cpu_read_mem(cpu, cpu->SP, (unsigned char*)dest, 2);
           cpu->SP += 2;
 
-          cpu->PC += 1;
           num_cycles = 12;
         }
         break;
@@ -1411,7 +1316,7 @@ void cpu_step_clock(Cpu* cpu) {
           }
 
           if (jump) {
-            cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
+            cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->PC, 2);
             num_cycles = 16;
           } else {
             num_cycles = 12;
@@ -1421,7 +1326,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0xc3:
         // JP a16
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->PC, 2);
         num_cycles = 16;
         break;
 
@@ -1432,27 +1337,30 @@ void cpu_step_clock(Cpu* cpu) {
         {
           bool call;
           switch (opcode) {
-            case 0xca:
+            case 0xc4:
               call = !CPU_FLAG_Z(cpu->F);
               break;
-            case 0xc2:
+            case 0xcc:
               call = CPU_FLAG_Z(cpu->F);
               break;
-            case 0xd2:
+            case 0xd4:
               call = !CPU_FLAG_C(cpu->F);
               break;
-            case 0xda:
+            case 0xdc:
               call = CPU_FLAG_C(cpu->F);
               break;
             default:
               assert(false);
           }
 
+          unsigned short dest;
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
+          cpu->PC += 2;
+
           if (call) {
-            unsigned short next_instruction = cpu->PC + 3;
             cpu->SP -= 2;
-            cpu_write_mem(cpu, cpu->SP, (unsigned char*)&next_instruction, 2);
-            cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
+            cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+            cpu->PC = dest;
             num_cycles = 24;
           } else {
             num_cycles = 12;
@@ -1462,10 +1370,13 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0xcd: // CALL a16
         {
-          unsigned short next_instruction = cpu->PC + 3;
+          unsigned short dest;
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
+          cpu->PC += 2;
+
           cpu->SP -= 2;
-          cpu_write_mem(cpu, cpu->SP, (unsigned char*)&next_instruction, 2);
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&cpu->PC, 2);
+          cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+          cpu->PC = dest;
           num_cycles = 24;
         }
         break;
@@ -1505,13 +1416,13 @@ void cpu_step_clock(Cpu* cpu) {
         // ADD A,d8
         {
           unsigned char source;
-          cpu_read_mem(cpu, cpu->PC + 1, &source, 1);
+          cpu_read_mem(cpu, cpu->PC, &source, 1);
+          cpu->PC++;
 
           unsigned char carry;
           unsigned char half_carry;
           add_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1566,7 +1477,6 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xcb:
         // PREFIX CB
         // TODO
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
@@ -1574,7 +1484,8 @@ void cpu_step_clock(Cpu* cpu) {
         // ADC A,d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           unsigned char carry_1;
           unsigned char half_carry_1;
@@ -1585,7 +1496,6 @@ void cpu_step_clock(Cpu* cpu) {
           add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
 
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1594,13 +1504,13 @@ void cpu_step_clock(Cpu* cpu) {
         // SUB d8
         {
           unsigned char source;
-          cpu_read_mem(cpu, cpu->PC + 1, &source, 1);
+          cpu_read_mem(cpu, cpu->PC, &source, 1);
+          cpu->PC++;
 
           unsigned char carry;
           unsigned char half_carry;
           sub_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1608,7 +1518,6 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xd9:
         // RETI
         // TODO
-        cpu->PC += 1;
         num_cycles = 16;
         break;
 
@@ -1616,7 +1525,8 @@ void cpu_step_clock(Cpu* cpu) {
         // SBC A,d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           unsigned char carry_1;
           unsigned char half_carry_1;
@@ -1627,7 +1537,6 @@ void cpu_step_clock(Cpu* cpu) {
           sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
 
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1636,10 +1545,10 @@ void cpu_step_clock(Cpu* cpu) {
         // LDH (a8),A
         {
           unsigned char addr;
-          cpu_read_mem(cpu, cpu->PC + 1, &addr, 1);
+          cpu_read_mem(cpu, cpu->PC, &addr, 1);
+          cpu->PC++;
           unsigned short offset_addr = (unsigned short)addr + 0xff00;
           cpu_write_mem(cpu, offset_addr, &cpu->A, 1);
-          cpu->PC += 2;
           num_cycles = 12;
         }
         break;
@@ -1647,7 +1556,6 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xe2:
         // LD (C),A
         cpu_write_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
-        cpu->PC += 2;
         num_cycles = 8;
         break;
 
@@ -1655,11 +1563,11 @@ void cpu_step_clock(Cpu* cpu) {
         // AND d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           cpu->A = cpu->A & value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1668,7 +1576,8 @@ void cpu_step_clock(Cpu* cpu) {
         // ADD SP,r8
         {
           char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
+          cpu->PC++;
 
           if (offset >= 0) {
             unsigned char carry;
@@ -1682,14 +1591,13 @@ void cpu_step_clock(Cpu* cpu) {
             cpu->F = CPU_F(0, 0, half_borrow, borrow);
           }
 
-          cpu->PC += 2;
           num_cycles = 16;
         }
         break;
 
       case 0xe9:
         // JP (HL)
-        cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)CPU_HL_REF(cpu), 2);
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_HL_REF(cpu), 2);
         num_cycles = 4;
         break;
 
@@ -1697,9 +1605,9 @@ void cpu_step_clock(Cpu* cpu) {
         // LD (a16),A
         {
           unsigned short address;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&address, 2);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
+          cpu->PC += 2;
           cpu_write_mem(cpu, address, &cpu->A, 1);
-          cpu->PC += 3;
           num_cycles = 16;
         }
         break;
@@ -1708,11 +1616,11 @@ void cpu_step_clock(Cpu* cpu) {
         // XOR d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           cpu->A = cpu->A ^ value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1721,9 +1629,9 @@ void cpu_step_clock(Cpu* cpu) {
         // LDH A,(a8)
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
           cpu_read_mem(cpu, 0xff00 + value, &cpu->A, 1);
-          cpu->PC += 2;
           num_cycles = 12;
         }
         break;
@@ -1731,14 +1639,13 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xf2:
         // LD A,(C)
         cpu_read_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
-        cpu->PC += 2;
+        cpu->PC++;
         num_cycles = 8;
         break;
 
       case 0xf3:
         // DI
         // TODO
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
@@ -1746,11 +1653,11 @@ void cpu_step_clock(Cpu* cpu) {
         // OR d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           cpu->A = cpu->A | value;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1759,7 +1666,7 @@ void cpu_step_clock(Cpu* cpu) {
         // LD HL,SP+r8
         {
           char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
           *CPU_HL_REF(cpu) = cpu->SP + offset;
           cpu->PC += 2;
           num_cycles = 12;
@@ -1769,7 +1676,6 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xf9:
         // LD SP,HL
         cpu->SP = CPU_HL(cpu);
-        cpu->PC += 1;
         num_cycles = 8;
         break;
 
@@ -1777,9 +1683,9 @@ void cpu_step_clock(Cpu* cpu) {
         // LD A,(a16)
         {
           unsigned short address;
-          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&address, 2);
+          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
+          cpu->PC += 2;
           cpu_read_mem(cpu, address, (unsigned char*)&cpu->A, 1);
-          cpu->PC += 3;
           num_cycles = 16;
         }
         break;
@@ -1787,7 +1693,6 @@ void cpu_step_clock(Cpu* cpu) {
       case 0xfb:
         // EI
         // TODO
-        cpu->PC += 1;
         num_cycles = 4;
         break;
 
@@ -1795,14 +1700,14 @@ void cpu_step_clock(Cpu* cpu) {
         // CP d8
         {
           unsigned char value;
-          cpu_read_mem(cpu, cpu->PC + 1, &value, 1);
+          cpu_read_mem(cpu, cpu->PC, &value, 1);
+          cpu->PC++;
 
           unsigned char trash;
           unsigned char borrow;
           unsigned char half_borrow;
           sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
 
-          cpu->PC += 2;
           num_cycles = 8;
         }
         break;
@@ -1811,7 +1716,8 @@ void cpu_step_clock(Cpu* cpu) {
         assert(false);
     }
 
-    cpu_dump_registers(cpu);
+    if (DEBUG)
+      cpu_dump_registers(cpu);
 }
 
 void test_math() {
@@ -1890,7 +1796,7 @@ int main(int argc, char **argv) {
 
   cpu.PC = 0x100;
 
-  for (int i = 0; i < 1000; i++)
+  while (1)
     cpu_step_clock(&cpu);
 
   return 0;
