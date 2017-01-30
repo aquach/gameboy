@@ -7,7 +7,7 @@ typedef struct {
   unsigned char memory[64 * 1024];
 
   // Pair orderings are important because you can use these in pairs: AF, BC, DE, HL.
-  // This assumes little-endian architecture since A should be high when reading FA.
+  // This assumes little-endian architecture since A should be most significant when reading AF.
   unsigned char F;
   unsigned char A;
 
@@ -24,10 +24,10 @@ typedef struct {
   unsigned short PC;
 } Cpu;
 
-#define CPU_AF_REF(c) ((unsigned short*)&(c)->A)
-#define CPU_BC_REF(c) ((unsigned short*)&(c)->B)
-#define CPU_DE_REF(c) ((unsigned short*)&(c)->D)
-#define CPU_HL_REF(c) ((unsigned short*)&(c)->H)
+#define CPU_AF_REF(c) ((unsigned short*)&(c)->F)
+#define CPU_BC_REF(c) ((unsigned short*)&(c)->C)
+#define CPU_DE_REF(c) ((unsigned short*)&(c)->E)
+#define CPU_HL_REF(c) ((unsigned short*)&(c)->L)
 
 #define CPU_AF(c) (*CPU_AF_REF(c))
 #define CPU_BC(c) (*CPU_BC_REF(c))
@@ -50,17 +50,17 @@ B: %03d (0x%02x) \
 C: %03d (0x%02x) \
 D: %03d (0x%02x) \
 E: %03d (0x%02x) \
+H: %03d (0x%02x) \
+L: %03d (0x%02x)\n\
 F: %03d (0x%02x) \
 Z: %01d \
 H: %01d \
 N: %01d \
-C: %01d \
-H: %03d (0x%02x) \
-L: %03d (0x%02x) \
+C: %01d\n\
 AF: %05d (0x%04x) \
 BC: %05d (0x%04x) \
 DE: %05d (0x%04x) \
-HL: %05d (0x%04x) \
+HL: %05d (0x%04x)\n\
 SP: %05d (0x%04x) \
 PC: %05d (0x%04x)\n",
 
@@ -69,13 +69,13 @@ PC: %05d (0x%04x)\n",
       cpu->C, cpu->C,
       cpu->D, cpu->D,
       cpu->E, cpu->E,
+      cpu->H, cpu->H,
+      cpu->L, cpu->L,
       cpu->F, cpu->F,
       CPU_FLAG_Z(cpu->F),
       CPU_FLAG_H(cpu->F),
       CPU_FLAG_N(cpu->F),
       CPU_FLAG_C(cpu->F),
-      cpu->H, cpu->H,
-      cpu->L, cpu->L,
       CPU_AF(cpu), CPU_AF(cpu),
       CPU_BC(cpu), CPU_BC(cpu),
       CPU_DE(cpu), CPU_DE(cpu),
@@ -1529,20 +1529,28 @@ void cpu_step_clock(Cpu* cpu) {
           switch (opcode) {
             case 0xc7:
               dest = 0x00;
+              break;
             case 0xcf:
               dest = 0x08;
+              break;
             case 0xd7:
               dest = 0x10;
+              break;
             case 0xdf:
               dest = 0x18;
+              break;
             case 0xe7:
               dest = 0x20;
+              break;
             case 0xef:
               dest = 0x28;
+              break;
             case 0xf7:
               dest = 0x30;
+              break;
             case 0xff:
               dest = 0x38;
+              break;
             default:
               assert(false);
           }
