@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -230,7 +230,6 @@ void cpu_step_clock(Cpu* cpu) {
           unsigned char bit = BIT(cpu->A, 7);
           cpu->A = (cpu->A << 1) | bit;
           cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 0, bit);
-          cpu->PC += 1;
           num_cycles = 4;
         }
         break;
@@ -485,7 +484,7 @@ void cpu_step_clock(Cpu* cpu) {
       case 0x21:
         // LD HL,d16
         cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_HL_REF(cpu), 2);
-        cpu->PC++;
+        cpu->PC += 2;
         num_cycles = 12;
         break;
 
@@ -1407,7 +1406,6 @@ void cpu_step_clock(Cpu* cpu) {
           cpu->SP -= 2;
           cpu_write_mem(cpu, cpu->SP, (unsigned char*)src, 2);
 
-          cpu->PC += 1;
           num_cycles = 16;
         }
         break;
@@ -1555,6 +1553,7 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0xe2:
         // LD (C),A
+        cpu->PC++;
         cpu_write_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
         num_cycles = 8;
         break;
@@ -1638,8 +1637,8 @@ void cpu_step_clock(Cpu* cpu) {
 
       case 0xf2:
         // LD A,(C)
-        cpu_read_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
         cpu->PC++;
+        cpu_read_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
         num_cycles = 8;
         break;
 
@@ -1667,8 +1666,8 @@ void cpu_step_clock(Cpu* cpu) {
         {
           char offset;
           cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
+          cpu->PC++;
           *CPU_HL_REF(cpu) = cpu->SP + offset;
-          cpu->PC += 2;
           num_cycles = 12;
         }
         break;
@@ -1716,8 +1715,8 @@ void cpu_step_clock(Cpu* cpu) {
         assert(false);
     }
 
-    if (DEBUG)
-      cpu_dump_registers(cpu);
+    /* if (DEBUG) */
+    /*   cpu_dump_registers(cpu); */
 }
 
 void test_math() {
