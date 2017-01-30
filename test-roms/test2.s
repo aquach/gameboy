@@ -1,0 +1,24 @@
+_main::
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI
+	DI

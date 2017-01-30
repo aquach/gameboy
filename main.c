@@ -43,6 +43,48 @@ typedef struct {
 
 #define CPU_F(z, n, h, c) ((z) << 7 | (n) << 6 | (h) << 5 | (c) << 4)
 
+void cpu_dump_registers(Cpu* cpu) {
+  printf(
+      "A: %03d (0x%02x) \
+B: %03d (0x%02x) \
+C: %03d (0x%02x) \
+D: %03d (0x%02x) \
+E: %03d (0x%02x) \
+F: %03d (0x%02x) \
+Z: %01d \
+H: %01d \
+N: %01d \
+C: %01d \
+H: %03d (0x%02x) \
+L: %03d (0x%02x) \
+AF: %05d (0x%04x) \
+BC: %05d (0x%04x) \
+DE: %05d (0x%04x) \
+HL: %05d (0x%04x) \
+SP: %05d (0x%04x) \
+PC: %05d (0x%04x)\n",
+
+      cpu->A, cpu->A,
+      cpu->B, cpu->B,
+      cpu->C, cpu->C,
+      cpu->D, cpu->D,
+      cpu->E, cpu->E,
+      cpu->F, cpu->F,
+      CPU_FLAG_Z(cpu->F),
+      CPU_FLAG_H(cpu->F),
+      CPU_FLAG_N(cpu->F),
+      CPU_FLAG_C(cpu->F),
+      cpu->H, cpu->H,
+      cpu->L, cpu->L,
+      CPU_AF(cpu), CPU_AF(cpu),
+      CPU_BC(cpu), CPU_BC(cpu),
+      CPU_DE(cpu), CPU_DE(cpu),
+      CPU_HL(cpu), CPU_HL(cpu),
+      cpu->SP, cpu->SP,
+      cpu->PC, cpu->PC
+  );
+}
+
 void add_8_bit(
   unsigned char a,
   unsigned char b,
@@ -120,6 +162,8 @@ void cpu_write_mem(Cpu* cpu, short address, unsigned char* data, int len) {
 void cpu_step_clock(Cpu* cpu) {
     unsigned char opcode;
     cpu_read_mem(cpu, cpu->PC, &opcode, 1);
+
+    printf("Executing: 0x%02x\n", opcode);
 
     int num_cycles;
     switch (opcode) {
@@ -841,35 +885,39 @@ void cpu_step_clock(Cpu* cpu) {
               assert(false);
           }
 
-          unsigned char* src;
+          unsigned char* src = NULL;
           switch (low_nibble % 8) {
             case 0:
-              dest = &cpu->B;
+              src = &cpu->B;
               break;
             case 1:
-              dest = &cpu->C;
+              src = &cpu->C;
               break;
             case 2:
-              dest = &cpu->D;
+              src = &cpu->D;
               break;
             case 3:
-              dest = &cpu->E;
+              src = &cpu->E;
               break;
             case 4:
-              dest = &cpu->H;
+              src = &cpu->H;
               break;
             case 5:
-              dest = &cpu->L;
+              src = &cpu->L;
               break;
             case 7:
-              dest = &cpu->A;
+              src = &cpu->A;
               break;
             default:
               assert(false);
           }
 
           *dest = *src;
+
+          cpu->PC += 1;
+          num_cycles = 4;
         }
+
         break;
 
       case 0x46:
@@ -1612,7 +1660,7 @@ void cpu_step_clock(Cpu* cpu) {
         // ADD SP,r8
         {
           char offset;
-          cpu_read_mem(cpu, cpu->PC + 1, &offset, 1);
+          cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&offset, 1);
 
           if (offset >= 0) {
             unsigned char carry;
@@ -1754,6 +1802,8 @@ void cpu_step_clock(Cpu* cpu) {
       default:
         assert(false);
     }
+
+    cpu_dump_registers(cpu);
 }
 
 void test_math() {
@@ -1813,9 +1863,27 @@ void test_math() {
   }
 }
 
+void cpu_load_rom_from_file(Cpu* cpu, const char* rom_path) {
+  FILE* fp = fopen(rom_path, "r");
+  fread(cpu->memory, 0x8000, 1, fp);
+}
+
 int main(int argc, char **argv) {
+  if (argc != 2) {
+    printf("Usage: ./gameboy rom.gb\n");
+    return 1;
+  }
+
   Cpu cpu;
   cpu_initialize(&cpu);
+
+  const char* rom_path = argv[1];
+  cpu_load_rom_from_file(&cpu, rom_path);
+
+  cpu.PC = 0x100;
+
+  for (int i = 0; i < 1000; i++)
+    cpu_step_clock(&cpu);
 
   return 0;
 }
