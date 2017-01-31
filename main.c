@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DEBUG 0
+#define DEBUG 1
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -44,6 +44,257 @@ typedef struct {
 #define CPU_FLAG_C(f) BIT((f), 4)
 
 #define CPU_F(z, n, h, c) ((z) << 7 | (n) << 6 | (h) << 5 | (c) << 4)
+
+void cpu_print_instruction(unsigned char opcode) {
+  char* instructions[256];
+  instructions[0x00] = "NOP";
+  instructions[0x01] = "LD BC,d16";
+  instructions[0x02] = "LD (BC),A";
+  instructions[0x03] = "INC BC";
+  instructions[0x04] = "INC B";
+  instructions[0x05] = "DEC B";
+  instructions[0x06] = "LD B,d8";
+  instructions[0x07] = "RLCA";
+  instructions[0x08] = "LD (a16),SP";
+  instructions[0x09] = "ADD HL,BC";
+  instructions[0x0a] = "LD A,(BC)";
+  instructions[0x0b] = "DEC BC";
+  instructions[0x0c] = "INC C";
+  instructions[0x0d] = "DEC C";
+  instructions[0x0e] = "LD C,d8";
+  instructions[0x0f] = "RRCA";
+  instructions[0x10] = "STOP 0";
+  instructions[0x11] = "LD DE,d16";
+  instructions[0x12] = "LD (DE),A";
+  instructions[0x13] = "INC DE";
+  instructions[0x14] = "INC D";
+  instructions[0x15] = "DEC D";
+  instructions[0x16] = "LD D,d8";
+  instructions[0x17] = "RLA";
+  instructions[0x18] = "JR r8";
+  instructions[0x19] = "ADD HL,DE";
+  instructions[0x1a] = "LD A,(DE)";
+  instructions[0x1b] = "DEC DE";
+  instructions[0x1c] = "INC E";
+  instructions[0x1d] = "DEC E";
+  instructions[0x1e] = "LD E,d8";
+  instructions[0x1f] = "RRA";
+  instructions[0x20] = "JR NZ,r8";
+  instructions[0x21] = "LD HL,d16";
+  instructions[0x22] = "LD (HL+),A";
+  instructions[0x23] = "INC HL";
+  instructions[0x24] = "INC H";
+  instructions[0x25] = "DEC H";
+  instructions[0x26] = "LD H,d8";
+  instructions[0x27] = "DAA";
+  instructions[0x28] = "JR Z,r8";
+  instructions[0x29] = "ADD HL,HL";
+  instructions[0x2a] = "LD A,(HL+)";
+  instructions[0x2b] = "DEC HL";
+  instructions[0x2c] = "INC L";
+  instructions[0x2d] = "DEC L";
+  instructions[0x2e] = "LD L,d8";
+  instructions[0x2f] = "CPL";
+  instructions[0x30] = "JR NC,r8";
+  instructions[0x31] = "LD SP,d16";
+  instructions[0x32] = "LD (HL-),A";
+  instructions[0x33] = "INC SP";
+  instructions[0x34] = "INC (HL)";
+  instructions[0x35] = "DEC (HL)";
+  instructions[0x36] = "LD (HL),d8";
+  instructions[0x37] = "SCF";
+  instructions[0x38] = "JR C,r8";
+  instructions[0x39] = "ADD HL,SP";
+  instructions[0x3a] = "LD A,(HL-)";
+  instructions[0x3b] = "DEC SP";
+  instructions[0x3c] = "INC A";
+  instructions[0x3d] = "DEC A";
+  instructions[0x3e] = "LD A,d8";
+  instructions[0x3f] = "CCF";
+  instructions[0x40] = "LD B,B";
+  instructions[0x41] = "LD B,C";
+  instructions[0x42] = "LD B,D";
+  instructions[0x43] = "LD B,E";
+  instructions[0x44] = "LD B,H";
+  instructions[0x45] = "LD B,L";
+  instructions[0x46] = "LD B,(HL)";
+  instructions[0x47] = "LD B,A";
+  instructions[0x48] = "LD C,B";
+  instructions[0x49] = "LD C,C";
+  instructions[0x4a] = "LD C,D";
+  instructions[0x4b] = "LD C,E";
+  instructions[0x4c] = "LD C,H";
+  instructions[0x4d] = "LD C,L";
+  instructions[0x4e] = "LD C,(HL)";
+  instructions[0x4f] = "LD C,A";
+  instructions[0x50] = "LD D,B";
+  instructions[0x51] = "LD D,C";
+  instructions[0x52] = "LD D,D";
+  instructions[0x53] = "LD D,E";
+  instructions[0x54] = "LD D,H";
+  instructions[0x55] = "LD D,L";
+  instructions[0x56] = "LD D,(HL)";
+  instructions[0x57] = "LD D,A";
+  instructions[0x58] = "LD E,B";
+  instructions[0x59] = "LD E,C";
+  instructions[0x5a] = "LD E,D";
+  instructions[0x5b] = "LD E,E";
+  instructions[0x5c] = "LD E,H";
+  instructions[0x5d] = "LD E,L";
+  instructions[0x5e] = "LD E,(HL)";
+  instructions[0x5f] = "LD E,A";
+  instructions[0x60] = "LD H,B";
+  instructions[0x61] = "LD H,C";
+  instructions[0x62] = "LD H,D";
+  instructions[0x63] = "LD H,E";
+  instructions[0x64] = "LD H,H";
+  instructions[0x65] = "LD H,L";
+  instructions[0x66] = "LD H,(HL)";
+  instructions[0x67] = "LD H,A";
+  instructions[0x68] = "LD L,B";
+  instructions[0x69] = "LD L,C";
+  instructions[0x6a] = "LD L,D";
+  instructions[0x6b] = "LD L,E";
+  instructions[0x6c] = "LD L,H";
+  instructions[0x6d] = "LD L,L";
+  instructions[0x6e] = "LD L,(HL)";
+  instructions[0x6f] = "LD L,A";
+  instructions[0x70] = "LD (HL),B";
+  instructions[0x71] = "LD (HL),C";
+  instructions[0x72] = "LD (HL),D";
+  instructions[0x73] = "LD (HL),E";
+  instructions[0x74] = "LD (HL),H";
+  instructions[0x75] = "LD (HL),L";
+  instructions[0x76] = "HALT";
+  instructions[0x77] = "LD (HL),A";
+  instructions[0x78] = "LD A,B";
+  instructions[0x79] = "LD A,C";
+  instructions[0x7a] = "LD A,D";
+  instructions[0x7b] = "LD A,E";
+  instructions[0x7c] = "LD A,H";
+  instructions[0x7d] = "LD A,L";
+  instructions[0x7e] = "LD A,(HL)";
+  instructions[0x7f] = "LD A,A";
+  instructions[0x80] = "ADD A,B";
+  instructions[0x81] = "ADD A,C";
+  instructions[0x82] = "ADD A,D";
+  instructions[0x83] = "ADD A,E";
+  instructions[0x84] = "ADD A,H";
+  instructions[0x85] = "ADD A,L";
+  instructions[0x86] = "ADD A,(HL)";
+  instructions[0x87] = "ADD A,A";
+  instructions[0x88] = "ADC A,B";
+  instructions[0x89] = "ADC A,C";
+  instructions[0x8a] = "ADC A,D";
+  instructions[0x8b] = "ADC A,E";
+  instructions[0x8c] = "ADC A,H";
+  instructions[0x8d] = "ADC A,L";
+  instructions[0x8e] = "ADC A,(HL)";
+  instructions[0x8f] = "ADC A,A";
+  instructions[0x90] = "SUB B";
+  instructions[0x91] = "SUB C";
+  instructions[0x92] = "SUB D";
+  instructions[0x93] = "SUB E";
+  instructions[0x94] = "SUB H";
+  instructions[0x95] = "SUB L";
+  instructions[0x96] = "SUB (HL)";
+  instructions[0x97] = "SUB A";
+  instructions[0x98] = "SBC A,B";
+  instructions[0x99] = "SBC A,C";
+  instructions[0x9a] = "SBC A,D";
+  instructions[0x9b] = "SBC A,E";
+  instructions[0x9c] = "SBC A,H";
+  instructions[0x9d] = "SBC A,L";
+  instructions[0x9e] = "SBC A,(HL)";
+  instructions[0x9f] = "SBC A,A";
+  instructions[0xa0] = "AND B";
+  instructions[0xa1] = "AND C";
+  instructions[0xa2] = "AND D";
+  instructions[0xa3] = "AND E";
+  instructions[0xa4] = "AND H";
+  instructions[0xa5] = "AND L";
+  instructions[0xa6] = "AND (HL)";
+  instructions[0xa7] = "AND A";
+  instructions[0xa8] = "XOR B";
+  instructions[0xa9] = "XOR C";
+  instructions[0xaa] = "XOR D";
+  instructions[0xab] = "XOR E";
+  instructions[0xac] = "XOR H";
+  instructions[0xad] = "XOR L";
+  instructions[0xae] = "XOR (HL)";
+  instructions[0xaf] = "XOR A";
+  instructions[0xb0] = "OR B";
+  instructions[0xb1] = "OR C";
+  instructions[0xb2] = "OR D";
+  instructions[0xb3] = "OR E";
+  instructions[0xb4] = "OR H";
+  instructions[0xb5] = "OR L";
+  instructions[0xb6] = "OR (HL)";
+  instructions[0xb7] = "OR A";
+  instructions[0xb8] = "CP B";
+  instructions[0xb9] = "CP C";
+  instructions[0xba] = "CP D";
+  instructions[0xbb] = "CP E";
+  instructions[0xbc] = "CP H";
+  instructions[0xbd] = "CP L";
+  instructions[0xbe] = "CP (HL)";
+  instructions[0xbf] = "CP A";
+  instructions[0xc0] = "RET NZ";
+  instructions[0xc1] = "POP BC";
+  instructions[0xc2] = "JP NZ,a16";
+  instructions[0xc3] = "JP a16";
+  instructions[0xc4] = "CALL NZ,a16";
+  instructions[0xc5] = "PUSH BC";
+  instructions[0xc6] = "ADD A,d8";
+  instructions[0xc7] = "RST 00H";
+  instructions[0xc8] = "RET Z";
+  instructions[0xc9] = "RET";
+  instructions[0xca] = "JP Z,a16";
+  instructions[0xcb] = "PREFIX CB";
+  instructions[0xcc] = "CALL Z,a16";
+  instructions[0xcd] = "CALL a16";
+  instructions[0xce] = "ADC A,d8";
+  instructions[0xcf] = "RST 08H";
+  instructions[0xd0] = "RET NC";
+  instructions[0xd1] = "POP DE";
+  instructions[0xd2] = "JP NC,a16";
+  instructions[0xd4] = "CALL NC,a16";
+  instructions[0xd5] = "PUSH DE";
+  instructions[0xd6] = "SUB d8";
+  instructions[0xd7] = "RST 10H";
+  instructions[0xd8] = "RET C";
+  instructions[0xd9] = "RETI";
+  instructions[0xda] = "JP C,a16";
+  instructions[0xdc] = "CALL C,a16";
+  instructions[0xde] = "SBC A,d8";
+  instructions[0xdf] = "RST 18H";
+  instructions[0xe0] = "LDH (a8),A";
+  instructions[0xe1] = "POP HL";
+  instructions[0xe2] = "LD (C),A";
+  instructions[0xe5] = "PUSH HL";
+  instructions[0xe6] = "AND d8";
+  instructions[0xe7] = "RST 20H";
+  instructions[0xe8] = "ADD SP,r8";
+  instructions[0xe9] = "JP (HL)";
+  instructions[0xea] = "LD (a16),A";
+  instructions[0xee] = "XOR d8";
+  instructions[0xef] = "RST 28H";
+  instructions[0xf0] = "LDH A,(a8)";
+  instructions[0xf1] = "POP AF";
+  instructions[0xf2] = "LD A,(C)";
+  instructions[0xf3] = "DI";
+  instructions[0xf5] = "PUSH AF";
+  instructions[0xf6] = "OR d8";
+  instructions[0xf7] = "RST 30H";
+  instructions[0xf8] = "LD HL,SP+r8";
+  instructions[0xf9] = "LD SP,HL";
+  instructions[0xfa] = "LD A,(a16)";
+  instructions[0xfb] = "EI";
+  instructions[0xfe] = "CP d8";
+  instructions[0xff] = "RST 38H";
+
+  printf("%s (0x%02x)\n", instructions[opcode], opcode);
+}
 
 void cpu_dump_registers(Cpu* cpu) {
   printf(
@@ -109,11 +360,17 @@ void sub_8_bit(
 ) {
   unsigned char carry;
   unsigned char half_carry;
-  add_8_bit(a, 256 - b, result, &carry, &half_carry);
-  // 3 - 1 => 3 + 255 => carry flag set, which means borrow flag not set.
-  // 3 - 4 => 3 + 252 => carry flag not set, which means borrow flag set.
-  *borrow = !carry;
-  *half_borrow = !half_carry;
+  if (b == 0) {
+    *result = a;
+    *borrow = false;
+    *half_borrow = false;
+  } else {
+    add_8_bit(a, 256 - b, result, &carry, &half_carry);
+    // 3 - 1 => 3 + 255 => carry flag set, which means borrow flag not set.
+    // 3 - 4 => 3 + 252 => carry flag not set, which means borrow flag set.
+    *borrow = !carry;
+    *half_borrow = !half_carry;
+  }
 }
 
 void add_16_bit(
@@ -140,22 +397,64 @@ void sub_16_bit(
 ) {
   unsigned char carry;
   unsigned char half_carry;
-  add_16_bit(a, 65536 - b, result, &carry, &half_carry);
-  *borrow = !carry;
-  *half_borrow = !half_carry;
+  if (b == 0) {
+    *result = a;
+    *borrow = false;
+    *half_borrow = false;
+  } else {
+    add_16_bit(a, 65536 - b, result, &carry, &half_carry);
+    *borrow = !carry;
+    *half_borrow = !half_carry;
+  }
 }
 
 void cpu_initialize(Cpu* cpu) {
-  // TODO
+  *CPU_AF_REF(cpu) = 0x01B0;
+  *CPU_BC_REF(cpu) = 0x0013;
+  *CPU_DE_REF(cpu) = 0x00D8;
+  *CPU_HL_REF(cpu) = 0x014D;
+  cpu->SP = 0xFFFE;
+  cpu->PC = 0x0200;
+  cpu->memory[0xFF05] = 0x00; // TIMA
+  cpu->memory[0xFF06] = 0x00; // TMA
+  cpu->memory[0xFF07] = 0x00; // TAC
+  cpu->memory[0xFF10] = 0x80; // NR10
+  cpu->memory[0xFF11] = 0xBF; // NR11
+  cpu->memory[0xFF12] = 0xF3; // NR12
+  cpu->memory[0xFF14] = 0xBF; // NR14
+  cpu->memory[0xFF16] = 0x3F; // NR21
+  cpu->memory[0xFF17] = 0x00; // NR22
+  cpu->memory[0xFF19] = 0xBF; // NR24
+  cpu->memory[0xFF1A] = 0x7F; // NR30
+  cpu->memory[0xFF1B] = 0xFF; // NR31
+  cpu->memory[0xFF1C] = 0x9F; // NR32
+  cpu->memory[0xFF1E] = 0xBF; // NR33
+  cpu->memory[0xFF20] = 0xFF; // NR41
+  cpu->memory[0xFF21] = 0x00; // NR42
+  cpu->memory[0xFF22] = 0x00; // NR43
+  cpu->memory[0xFF23] = 0xBF; // NR30
+  cpu->memory[0xFF24] = 0x77; // NR50
+  cpu->memory[0xFF25] = 0xF3; // NR51
+  cpu->memory[0xFF26] = 0x0F; // NR52
+  cpu->memory[0xFF40] = 0x91; // LCDC
+  cpu->memory[0xFF42] = 0x00; // SCY
+  cpu->memory[0xFF43] = 0x00; // SCX
+  cpu->memory[0xFF45] = 0x00; // LYC
+  cpu->memory[0xFF47] = 0xFC; // BGP
+  cpu->memory[0xFF48] = 0xFF; // OBP0
+  cpu->memory[0xFF49] = 0xFF; // OBP1
+  cpu->memory[0xFF4A] = 0x00; // WY
+  cpu->memory[0xFF4B] = 0x00; // WX
+  cpu->memory[0xFFFF] = 0x00; // IE
 }
 
-void cpu_read_mem(Cpu* cpu, short address, unsigned char* output, int len) {
+void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int len) {
   memcpy(output, cpu->memory + address, len);
 }
 
-void cpu_write_mem(Cpu* cpu, short address, unsigned char* data, int len) {
+void cpu_write_mem(Cpu* cpu, unsigned short address, unsigned char* data, int len) {
   if (address == 0xff02) { // SC
-    printf("%c", cpu->memory[0xff01]); // SB
+    printf("%d\n", cpu->memory[0xff01]); // SB
   } else {
     memcpy(cpu->memory + address, data, len);
   }
@@ -170,8 +469,10 @@ void cpu_step_clock(Cpu* cpu) {
 
   assert(cpu->PC <= 0x8000);
 
-  if (DEBUG)
-    printf("Executing: 0x%02x\n", opcode);
+  if (DEBUG) {
+    printf("Executing: ");
+    cpu_print_instruction(opcode);
+  }
 
   int num_cycles;
   switch (opcode) {
@@ -313,7 +614,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x10:
       // STOP 0
-      // TODO
+      assert(false);
       cpu->PC++;
       num_cycles = 4;
       break;
@@ -927,7 +1228,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x76:
       // HALT
-      // TODO
+      assert(false);
       num_cycles = 4;
       break;
 
@@ -1291,6 +1592,11 @@ void cpu_step_clock(Cpu* cpu) {
         cpu_read_mem(cpu, cpu->SP, (unsigned char*)dest, 2);
         cpu->SP += 2;
 
+        if (opcode == 0xf1) {
+          // Discard lower nibble.
+          cpu->F = (cpu->F >> 4) << 4;
+        }
+
         num_cycles = 12;
       }
       break;
@@ -1478,7 +1784,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xcb:
       // PREFIX CB
-      // TODO
+      assert(false);
       num_cycles = 4;
       break;
 
@@ -1519,7 +1825,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xd9:
       // RETI
-      // TODO
+      assert(false);
       num_cycles = 16;
       break;
 
@@ -1648,7 +1954,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xf3:
       // DI
-      // TODO
+      assert(false);
       num_cycles = 4;
       break;
 
@@ -1695,7 +2001,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xfb:
       // EI
-      // TODO
+      assert(false);
       num_cycles = 4;
       break;
 
@@ -1719,8 +2025,10 @@ void cpu_step_clock(Cpu* cpu) {
       assert(false);
   }
 
-  /* if (DEBUG) */
-  /*   cpu_dump_registers(cpu); */
+  if (DEBUG) {
+    cpu_dump_registers(cpu);
+    printf("\n");
+  }
 }
 
 void test_math() {
@@ -1796,8 +2104,6 @@ int main(int argc, char **argv) {
 
   const char* rom_path = argv[1];
   cpu_load_rom_from_file(&cpu, rom_path);
-
-  cpu.PC = 0x100;
 
   while (1)
     cpu_step_clock(&cpu);
