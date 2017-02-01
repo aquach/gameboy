@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -45,7 +45,132 @@ typedef struct {
 
 #define CPU_F(z, n, h, c) ((z) << 7 | (n) << 6 | (h) << 5 | (c) << 4)
 
-void cpu_print_instruction(unsigned char opcode) {
+void add_8_bit(
+  unsigned char a,
+  unsigned char b,
+  unsigned char* result,
+  unsigned char* carry,
+  unsigned char* half_carry
+) {
+  unsigned short full_add = (unsigned short)a + (unsigned short)b;
+  *result = full_add & 0xff;
+  *carry = full_add >> 8;
+  *half_carry = (((unsigned short)a & 0xf) + ((unsigned short)b & 0xf)) >> 4;
+}
+
+void sub_8_bit(
+  unsigned char a,
+  unsigned char b,
+  unsigned char* result,
+  unsigned char* borrow,
+  unsigned char* half_borrow
+) {
+  unsigned char carry;
+  unsigned char half_carry;
+  if (b == 0) {
+    *result = a;
+    *borrow = false;
+    *half_borrow = false;
+  } else {
+    add_8_bit(a, 256 - b, result, &carry, &half_carry);
+    // 3 - 1 => 3 + 255 => carry flag set, which means borrow flag not set.
+    // 3 - 4 => 3 + 252 => carry flag not set, which means borrow flag set.
+    *borrow = !carry;
+    *half_borrow = !half_carry;
+  }
+}
+
+void add_16_bit(
+  unsigned short a,
+  unsigned short b,
+  unsigned short* result,
+  unsigned char* carry,
+  unsigned char* half_carry
+) {
+  unsigned int full_add = (unsigned int)a + (unsigned int)b;
+  *result = full_add & 0xffff;
+  *carry = full_add >> 16;
+  *half_carry = (((unsigned int)a & 0xfff) + ((unsigned int)b & 0xfff)) >> 12;
+}
+
+// TODO: H/C flag may be "no borrow" instead of "did borrow".
+
+void sub_16_bit(
+  unsigned short a,
+  unsigned short b,
+  unsigned short* result,
+  unsigned char* borrow,
+  unsigned char* half_borrow
+) {
+  unsigned char carry;
+  unsigned char half_carry;
+  if (b == 0) {
+    *result = a;
+    *borrow = false;
+    *half_borrow = false;
+  } else {
+    add_16_bit(a, 65536 - b, result, &carry, &half_carry);
+    *borrow = !carry;
+    *half_borrow = !half_carry;
+  }
+}
+
+void cpu_initialize(Cpu* cpu) {
+  *CPU_AF_REF(cpu) = 0x01B0;
+  *CPU_BC_REF(cpu) = 0x0013;
+  *CPU_DE_REF(cpu) = 0x00D8;
+  *CPU_HL_REF(cpu) = 0x014D;
+  cpu->SP = 0xFFFE;
+  cpu->PC = 0x0200;
+  cpu->memory[0xFF05] = 0x00; // TIMA
+  cpu->memory[0xFF06] = 0x00; // TMA
+  cpu->memory[0xFF07] = 0x00; // TAC
+  cpu->memory[0xFF10] = 0x80; // NR10
+  cpu->memory[0xFF11] = 0xBF; // NR11
+  cpu->memory[0xFF12] = 0xF3; // NR12
+  cpu->memory[0xFF14] = 0xBF; // NR14
+  cpu->memory[0xFF16] = 0x3F; // NR21
+  cpu->memory[0xFF17] = 0x00; // NR22
+  cpu->memory[0xFF19] = 0xBF; // NR24
+  cpu->memory[0xFF1A] = 0x7F; // NR30
+  cpu->memory[0xFF1B] = 0xFF; // NR31
+  cpu->memory[0xFF1C] = 0x9F; // NR32
+  cpu->memory[0xFF1E] = 0xBF; // NR33
+  cpu->memory[0xFF20] = 0xFF; // NR41
+  cpu->memory[0xFF21] = 0x00; // NR42
+  cpu->memory[0xFF22] = 0x00; // NR43
+  cpu->memory[0xFF23] = 0xBF; // NR30
+  cpu->memory[0xFF24] = 0x77; // NR50
+  cpu->memory[0xFF25] = 0xF3; // NR51
+  cpu->memory[0xFF26] = 0x0F; // NR52
+  cpu->memory[0xFF40] = 0x91; // LCDC
+  cpu->memory[0xFF42] = 0x00; // SCY
+  cpu->memory[0xFF43] = 0x00; // SCX
+  cpu->memory[0xFF45] = 0x00; // LYC
+  cpu->memory[0xFF47] = 0xFC; // BGP
+  cpu->memory[0xFF48] = 0xFF; // OBP0
+  cpu->memory[0xFF49] = 0xFF; // OBP1
+  cpu->memory[0xFF4A] = 0x00; // WY
+  cpu->memory[0xFF4B] = 0x00; // WX
+  cpu->memory[0xFFFF] = 0x00; // IE
+}
+
+void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int len) {
+  memcpy(output, cpu->memory + address, len);
+}
+
+void cpu_write_mem(Cpu* cpu, unsigned short address, unsigned char* data, int len) {
+  if (address == 0xff02) { // SC
+    printf("%d\n", cpu->memory[0xff01]); // SB
+  } else {
+    memcpy(cpu->memory + address, data, len);
+  }
+}
+
+void cpu_print_instruction(Cpu* cpu) {
+  unsigned char opcode;
+  cpu_read_mem(cpu, cpu->PC, &opcode, 1);
+
   char* instructions[256];
   instructions[0x00] = "NOP";
   instructions[0x01] = "LD BC,d16";
@@ -293,7 +418,65 @@ void cpu_print_instruction(unsigned char opcode) {
   instructions[0xfe] = "CP d8";
   instructions[0xff] = "RST 38H";
 
-  printf("%s (0x%02x)\n", instructions[opcode], opcode);
+  printf("%s (0x%02x) ", instructions[opcode], opcode);
+
+  if (
+      opcode == 0x06 ||
+      opcode == 0x0e ||
+      opcode == 0x16 ||
+      opcode == 0x18 ||
+      opcode == 0x1e ||
+      opcode == 0x20 ||
+      opcode == 0x26 ||
+      opcode == 0x28 ||
+      opcode == 0x2e ||
+      opcode == 0x30 ||
+      opcode == 0x36 ||
+      opcode == 0x38 ||
+      opcode == 0x3e ||
+      opcode == 0xc6 ||
+      opcode == 0xce ||
+      opcode == 0xd6 ||
+      opcode == 0xde ||
+      opcode == 0xe0 ||
+      opcode == 0xe2 ||
+      opcode == 0xe6 ||
+      opcode == 0xe8 ||
+      opcode == 0xee ||
+      opcode == 0xf0 ||
+      opcode == 0xf2 ||
+      opcode == 0xf6 ||
+      opcode == 0xf8 ||
+      opcode == 0xfe
+  ) {
+    unsigned char arg;
+    cpu_read_mem(cpu, cpu->PC + 1, &arg, 1);
+    printf("arg: %03d (0x%02x)\n", arg, arg);
+  } else if (
+    opcode == 0x01 ||
+    opcode == 0x08 ||
+    opcode == 0x11 ||
+    opcode == 0x21 ||
+    opcode == 0x31 ||
+    opcode == 0xc2 ||
+    opcode == 0xc3 ||
+    opcode == 0xc4 ||
+    opcode == 0xca ||
+    opcode == 0xcc ||
+    opcode == 0xcd ||
+    opcode == 0xd2 ||
+    opcode == 0xd4 ||
+    opcode == 0xda ||
+    opcode == 0xdc ||
+    opcode == 0xea ||
+    opcode == 0xfa
+  ) {
+    unsigned short arg;
+    cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&arg, 2);
+    printf("arg: %05d (0x%04x)\n", arg, arg);
+  } else {
+    printf("\n");
+  }
 }
 
 void cpu_dump_registers(Cpu* cpu) {
@@ -338,141 +521,26 @@ PC: %05d (0x%04x)\n",
   );
 }
 
-void add_8_bit(
-  unsigned char a,
-  unsigned char b,
-  unsigned char* result,
-  unsigned char* carry,
-  unsigned char* half_carry
-) {
-  unsigned short full_add = (unsigned short)a + (unsigned short)b;
-  *result = full_add & 0xff;
-  *carry = full_add >> 8;
-  *half_carry = (((unsigned short)a & 0xf) + ((unsigned short)b & 0xf)) >> 4;
-}
-
-void sub_8_bit(
-  unsigned char a,
-  unsigned char b,
-  unsigned char* result,
-  unsigned char* borrow,
-  unsigned char* half_borrow
-) {
-  unsigned char carry;
-  unsigned char half_carry;
-  if (b == 0) {
-    *result = a;
-    *borrow = false;
-    *half_borrow = false;
-  } else {
-    add_8_bit(a, 256 - b, result, &carry, &half_carry);
-    // 3 - 1 => 3 + 255 => carry flag set, which means borrow flag not set.
-    // 3 - 4 => 3 + 252 => carry flag not set, which means borrow flag set.
-    *borrow = !carry;
-    *half_borrow = !half_carry;
-  }
-}
-
-void add_16_bit(
-  unsigned short a,
-  unsigned short b,
-  unsigned short* result,
-  unsigned char* carry,
-  unsigned char* half_carry
-) {
-  unsigned int full_add = (unsigned int)a + (unsigned int)b;
-  *result = full_add & 0xffff;
-  *carry = full_add >> 16;
-  *half_carry = (((unsigned int)a & 0xfff) + ((unsigned int)b & 0xfff)) >> 12;
-}
-
-// TODO: H/C flag may be "no borrow" instead of "did borrow".
-
-void sub_16_bit(
-  unsigned short a,
-  unsigned short b,
-  unsigned short* result,
-  unsigned char* borrow,
-  unsigned char* half_borrow
-) {
-  unsigned char carry;
-  unsigned char half_carry;
-  if (b == 0) {
-    *result = a;
-    *borrow = false;
-    *half_borrow = false;
-  } else {
-    add_16_bit(a, 65536 - b, result, &carry, &half_carry);
-    *borrow = !carry;
-    *half_borrow = !half_carry;
-  }
-}
-
-void cpu_initialize(Cpu* cpu) {
-  *CPU_AF_REF(cpu) = 0x01B0;
-  *CPU_BC_REF(cpu) = 0x0013;
-  *CPU_DE_REF(cpu) = 0x00D8;
-  *CPU_HL_REF(cpu) = 0x014D;
-  cpu->SP = 0xFFFE;
-  cpu->PC = 0x0200;
-  cpu->memory[0xFF05] = 0x00; // TIMA
-  cpu->memory[0xFF06] = 0x00; // TMA
-  cpu->memory[0xFF07] = 0x00; // TAC
-  cpu->memory[0xFF10] = 0x80; // NR10
-  cpu->memory[0xFF11] = 0xBF; // NR11
-  cpu->memory[0xFF12] = 0xF3; // NR12
-  cpu->memory[0xFF14] = 0xBF; // NR14
-  cpu->memory[0xFF16] = 0x3F; // NR21
-  cpu->memory[0xFF17] = 0x00; // NR22
-  cpu->memory[0xFF19] = 0xBF; // NR24
-  cpu->memory[0xFF1A] = 0x7F; // NR30
-  cpu->memory[0xFF1B] = 0xFF; // NR31
-  cpu->memory[0xFF1C] = 0x9F; // NR32
-  cpu->memory[0xFF1E] = 0xBF; // NR33
-  cpu->memory[0xFF20] = 0xFF; // NR41
-  cpu->memory[0xFF21] = 0x00; // NR42
-  cpu->memory[0xFF22] = 0x00; // NR43
-  cpu->memory[0xFF23] = 0xBF; // NR30
-  cpu->memory[0xFF24] = 0x77; // NR50
-  cpu->memory[0xFF25] = 0xF3; // NR51
-  cpu->memory[0xFF26] = 0x0F; // NR52
-  cpu->memory[0xFF40] = 0x91; // LCDC
-  cpu->memory[0xFF42] = 0x00; // SCY
-  cpu->memory[0xFF43] = 0x00; // SCX
-  cpu->memory[0xFF45] = 0x00; // LYC
-  cpu->memory[0xFF47] = 0xFC; // BGP
-  cpu->memory[0xFF48] = 0xFF; // OBP0
-  cpu->memory[0xFF49] = 0xFF; // OBP1
-  cpu->memory[0xFF4A] = 0x00; // WY
-  cpu->memory[0xFF4B] = 0x00; // WX
-  cpu->memory[0xFFFF] = 0x00; // IE
-}
-
-void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int len) {
-  memcpy(output, cpu->memory + address, len);
-}
-
-void cpu_write_mem(Cpu* cpu, unsigned short address, unsigned char* data, int len) {
-  if (address == 0xff02) { // SC
-    printf("%d\n", cpu->memory[0xff01]); // SB
-  } else {
-    memcpy(cpu->memory + address, data, len);
+void cpu_dump_stack(Cpu* cpu) {
+  printf("Stack:\n");
+  for (unsigned short addr = 0xfffe; addr >= 0xfff0; addr--) {
+    printf("0x%02x: %03d (0x%02d)\n", addr, cpu->memory[addr], cpu->memory[addr]);
   }
 }
 
 void cpu_step_clock(Cpu* cpu) {
   assert(cpu->PC <= 0x8000);
 
+  if (DEBUG) {
+    printf("Executing: ");
+    cpu_print_instruction(cpu);
+  }
+
   unsigned char opcode;
   cpu_read_mem(cpu, cpu->PC, &opcode, 1);
   cpu->PC++;
 
   assert(cpu->PC <= 0x8000);
-
-  if (DEBUG) {
-    printf("Executing: ");
-    cpu_print_instruction(opcode);
-  }
 
   int num_cycles;
   switch (opcode) {
@@ -923,7 +991,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x32:
       // LD (HL-),A
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
       *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
       num_cycles = 8;
       break;
@@ -1624,8 +1692,12 @@ void cpu_step_clock(Cpu* cpu) {
             assert(false);
         }
 
+        unsigned short dest;
+        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
+        cpu->PC += 2;
+
         if (jump) {
-          cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->PC, 2);
+          cpu->PC = dest;
           num_cycles = 16;
         } else {
           num_cycles = 12;
@@ -2016,6 +2088,7 @@ void cpu_step_clock(Cpu* cpu) {
         unsigned char borrow;
         unsigned char half_borrow;
         sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
+        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow, borrow);
 
         num_cycles = 8;
       }
@@ -2027,6 +2100,7 @@ void cpu_step_clock(Cpu* cpu) {
 
   if (DEBUG) {
     cpu_dump_registers(cpu);
+    cpu_dump_stack(cpu);
     printf("\n");
   }
 }
