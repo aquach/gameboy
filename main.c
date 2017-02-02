@@ -24,6 +24,10 @@ typedef struct {
 
   unsigned short SP;
   unsigned short PC;
+
+  int set_ime_after_n_instructions;
+  int unset_ime_after_n_instructions;
+  bool IME;
 } Cpu;
 
 #define CPU_AF_REF(c) ((unsigned short*)&(c)->F)
@@ -121,7 +125,7 @@ void cpu_initialize(Cpu* cpu) {
   *CPU_DE_REF(cpu) = 0x00D8;
   *CPU_HL_REF(cpu) = 0x014D;
   cpu->SP = 0xFFFE;
-  cpu->PC = 0x0200;
+  cpu->PC = 0x0100;
   cpu->memory[0xFF05] = 0x00; // TIMA
   cpu->memory[0xFF06] = 0x00; // TMA
   cpu->memory[0xFF07] = 0x00; // TAC
@@ -153,6 +157,10 @@ void cpu_initialize(Cpu* cpu) {
   cpu->memory[0xFF4A] = 0x00; // WY
   cpu->memory[0xFF4B] = 0x00; // WX
   cpu->memory[0xFFFF] = 0x00; // IE
+
+  cpu->IME = 0;
+  cpu->set_ime_after_n_instructions = -1;
+  cpu->unset_ime_after_n_instructions = -1;
 }
 
 void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int len) {
@@ -161,7 +169,7 @@ void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int l
 
 void cpu_write_mem(Cpu* cpu, unsigned short address, unsigned char* data, int len) {
   if (address == 0xff02) { // SC
-    printf("%d\n", cpu->memory[0xff01]); // SB
+    printf("%c\n", cpu->memory[0xff01]); // SB
   } else {
     memcpy(cpu->memory + address, data, len);
   }
@@ -529,8 +537,6 @@ void cpu_dump_stack(Cpu* cpu) {
 }
 
 void cpu_step_clock(Cpu* cpu) {
-  assert(cpu->PC <= 0x8000);
-
   if (DEBUG) {
     printf("Executing: ");
     cpu_print_instruction(cpu);
@@ -539,8 +545,6 @@ void cpu_step_clock(Cpu* cpu) {
   unsigned char opcode;
   cpu_read_mem(cpu, cpu->PC, &opcode, 1);
   cpu->PC++;
-
-  assert(cpu->PC <= 0x8000);
 
   int num_cycles;
   switch (opcode) {
@@ -1856,7 +1860,8 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xcb:
       // PREFIX CB
-      assert(false);
+      /* assert(false); */
+      cpu->PC++;
       num_cycles = 4;
       break;
 
@@ -1897,7 +1902,9 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xd9:
       // RETI
-      assert(false);
+      cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+      cpu->SP += 2;
+      cpu->IME = 1;
       num_cycles = 16;
       break;
 
@@ -2026,7 +2033,8 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xf3:
       // DI
-      assert(false);
+      if (cpu->unset_ime_after_n_instructions == -1)
+        cpu->unset_ime_after_n_instructions = 1;
       num_cycles = 4;
       break;
 
@@ -2073,7 +2081,8 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xfb:
       // EI
-      assert(false);
+      if (cpu->set_ime_after_n_instructions == -1)
+        cpu->set_ime_after_n_instructions = 1;
       num_cycles = 4;
       break;
 
@@ -2096,6 +2105,20 @@ void cpu_step_clock(Cpu* cpu) {
 
     default:
       assert(false);
+  }
+
+  if (cpu->set_ime_after_n_instructions > 0) {
+    cpu->set_ime_after_n_instructions--;
+    if (cpu->set_ime_after_n_instructions < 0) {
+      cpu->IME = 1;
+    }
+  }
+
+  if (cpu->unset_ime_after_n_instructions > 0) {
+    cpu->unset_ime_after_n_instructions--;
+    if (cpu->unset_ime_after_n_instructions < 0) {
+      cpu->IME = 0;
+    }
   }
 
   if (DEBUG) {
