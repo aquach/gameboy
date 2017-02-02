@@ -37,7 +37,6 @@ typedef struct {
 #define REG_SC (0xFF02)
 #define REG_DIV (0xFF04)
 #define REG_TIMA (0xFF05)
-#define REG_TIMA (0xFF05)
 #define REG_TMA (0xFF06)
 #define REG_TAC (0xFF07)
 #define REG_IF (0xFF0F)
@@ -88,6 +87,9 @@ typedef struct {
 #define CPU_FLAG_C(f) BIT((f), 4)
 
 #define CPU_F(z, n, h, c) ((z) << 7 | (n) << 6 | (h) << 5 | (c) << 4)
+
+#define SET_BIT(v, index) ((v) | (1 << (index)))
+#define UNSET_BIT(v, index) ((v) & ~(1 << (index)))
 
 void add_8_bit(
   unsigned char a,
@@ -202,6 +204,8 @@ void gameboy_initialize(Gameboy* gb) {
   gb->IME = 0;
   gb->set_ime_after_n_instructions = -1;
   gb->unset_ime_after_n_instructions = -1;
+
+  gb->ticks_to_next_instruction = 0;
 }
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
@@ -210,7 +214,7 @@ void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output
 
 void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len) {
   if (address == REG_SC) {
-    printf("%c\n", gb->memory[REG_SB]);
+    printf("%d\n", gb->memory[REG_SB]);
   } else if (address == REG_DIV) {
     gb->memory[REG_DIV] = 0;
   } else {
@@ -574,7 +578,7 @@ PC: %05d (0x%04x)\n",
 
 void gameboy_dump_stack(Gameboy* gb) {
   printf("Stack:\n");
-  for (unsigned short addr = 0xfffe; addr >= 0xfff0; addr--) {
+  for (unsigned short addr = 0xfffe; addr >= 0xff00; addr--) {
     printf("0x%02x: %03d (0x%02d)\n", addr, gb->memory[addr], gb->memory[addr]);
   }
 }
@@ -2150,14 +2154,14 @@ int gameboy_execute_instruction(Gameboy* gb) {
       assert(false);
   }
 
-  if (gb->set_ime_after_n_instructions > 0) {
+  if (gb->set_ime_after_n_instructions >= 0) {
     gb->set_ime_after_n_instructions--;
     if (gb->set_ime_after_n_instructions < 0) {
       gb->IME = 1;
     }
   }
 
-  if (gb->unset_ime_after_n_instructions > 0) {
+  if (gb->unset_ime_after_n_instructions >= 0) {
     gb->unset_ime_after_n_instructions--;
     if (gb->unset_ime_after_n_instructions < 0) {
       gb->IME = 0;
@@ -2176,6 +2180,8 @@ int gameboy_execute_instruction(Gameboy* gb) {
 void gameboy_step_clock(Gameboy* gb) {
   gb->global_simulated_ticks++;
 
+  // Increment timers.
+
   if (gb->global_simulated_ticks % 256 == 0) {
     // CPU clock / 256 = 16384 Hz.
     gb->memory[REG_DIV]++;
@@ -2191,8 +2197,35 @@ void gameboy_step_clock(Gameboy* gb) {
     if (gb->global_simulated_ticks % divider == 0) {
       if (gb->memory[REG_TIMA] == 255) {
         gb->memory[REG_TIMA] = gb->memory[REG_TMA];
+        gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 2);
       } else {
         gb->memory[REG_TIMA]++;
+      }
+    }
+  }
+
+  // Handle interrupts.
+  if (gb->IME) {
+    unsigned char IE = gb->memory[REG_IE];
+    unsigned char IF = gb->memory[REG_IF];
+    unsigned char triggered_interrupts = IE & IF;
+
+    for (int bit = 0; bit <= 4; bit++) {
+      if (BIT(triggered_interrupts, bit)) {
+        // Turn off interrupts.
+        gb->IME = false;
+
+        // Flip off IF bit.
+        gb->memory[REG_IF] = UNSET_BIT(gb->memory[REG_IF], bit);
+
+        // Push PC onto stack.
+        gb->SP -= 2;
+        gameboy_write_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+
+        // Go to interrupt handler.
+        unsigned short dest_addr = (unsigned short[]){ 0x40, 0x48, 0x50, 0x58, 0x60 }[bit];
+        gb->PC = dest_addr;
+        break;
       }
     }
   }
@@ -2265,6 +2298,7 @@ void test_math() {
 }
 
 void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
+  printf("Loading ROM from path: %s\n", rom_path);
   FILE* fp = fopen(rom_path, "r");
   fread(gb->memory, 0x8000, 1, fp);
 }
@@ -2281,7 +2315,7 @@ int main(int argc, char **argv) {
   const char* rom_path = argv[1];
   gameboy_load_rom_from_file(&gb, rom_path);
 
-  while (1)
+  while (true)
     gameboy_step_clock(&gb);
 
   return 0;
