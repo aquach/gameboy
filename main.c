@@ -28,7 +28,47 @@ typedef struct {
   int set_ime_after_n_instructions;
   int unset_ime_after_n_instructions;
   bool IME;
-} Cpu;
+
+  unsigned long long global_simulated_ticks; // In CPU clock ticks.
+  int ticks_to_next_instruction;
+} Gameboy;
+
+#define REG_SB (0xFF01)
+#define REG_SC (0xFF02)
+#define REG_DIV (0xFF04)
+#define REG_TIMA (0xFF05)
+#define REG_TIMA (0xFF05)
+#define REG_TMA (0xFF06)
+#define REG_TAC (0xFF07)
+#define REG_IF (0xFF0F)
+#define REG_NR10 (0xFF10)
+#define REG_NR11 (0xFF11)
+#define REG_NR12 (0xFF12)
+#define REG_NR14 (0xFF14)
+#define REG_NR21 (0xFF16)
+#define REG_NR22 (0xFF17)
+#define REG_NR24 (0xFF19)
+#define REG_NR30 (0xFF1A)
+#define REG_NR31 (0xFF1B)
+#define REG_NR32 (0xFF1C)
+#define REG_NR33 (0xFF1E)
+#define REG_NR41 (0xFF20)
+#define REG_NR42 (0xFF21)
+#define REG_NR43 (0xFF22)
+#define REG_NR44 (0xFF23)
+#define REG_NR50 (0xFF24)
+#define REG_NR51 (0xFF25)
+#define REG_NR52 (0xFF26)
+#define REG_LCDC (0xFF40)
+#define REG_SCY (0xFF42)
+#define REG_SCX (0xFF43)
+#define REG_LYC (0xFF45)
+#define REG_BGP (0xFF47)
+#define REG_OBP0 (0xFF48)
+#define REG_OBP1 (0xFF49)
+#define REG_WY (0xFF4A)
+#define REG_WX (0xFF4B)
+#define REG_IE (0xFFFF)
 
 #define CPU_AF_REF(c) ((unsigned short*)&(c)->F)
 #define CPU_BC_REF(c) ((unsigned short*)&(c)->C)
@@ -119,65 +159,68 @@ void sub_16_bit(
   }
 }
 
-void cpu_initialize(Cpu* cpu) {
-  *CPU_AF_REF(cpu) = 0x01B0;
-  *CPU_BC_REF(cpu) = 0x0013;
-  *CPU_DE_REF(cpu) = 0x00D8;
-  *CPU_HL_REF(cpu) = 0x014D;
-  cpu->SP = 0xFFFE;
-  cpu->PC = 0x0100;
-  cpu->memory[0xFF05] = 0x00; // TIMA
-  cpu->memory[0xFF06] = 0x00; // TMA
-  cpu->memory[0xFF07] = 0x00; // TAC
-  cpu->memory[0xFF10] = 0x80; // NR10
-  cpu->memory[0xFF11] = 0xBF; // NR11
-  cpu->memory[0xFF12] = 0xF3; // NR12
-  cpu->memory[0xFF14] = 0xBF; // NR14
-  cpu->memory[0xFF16] = 0x3F; // NR21
-  cpu->memory[0xFF17] = 0x00; // NR22
-  cpu->memory[0xFF19] = 0xBF; // NR24
-  cpu->memory[0xFF1A] = 0x7F; // NR30
-  cpu->memory[0xFF1B] = 0xFF; // NR31
-  cpu->memory[0xFF1C] = 0x9F; // NR32
-  cpu->memory[0xFF1E] = 0xBF; // NR33
-  cpu->memory[0xFF20] = 0xFF; // NR41
-  cpu->memory[0xFF21] = 0x00; // NR42
-  cpu->memory[0xFF22] = 0x00; // NR43
-  cpu->memory[0xFF23] = 0xBF; // NR30
-  cpu->memory[0xFF24] = 0x77; // NR50
-  cpu->memory[0xFF25] = 0xF3; // NR51
-  cpu->memory[0xFF26] = 0x0F; // NR52
-  cpu->memory[0xFF40] = 0x91; // LCDC
-  cpu->memory[0xFF42] = 0x00; // SCY
-  cpu->memory[0xFF43] = 0x00; // SCX
-  cpu->memory[0xFF45] = 0x00; // LYC
-  cpu->memory[0xFF47] = 0xFC; // BGP
-  cpu->memory[0xFF48] = 0xFF; // OBP0
-  cpu->memory[0xFF49] = 0xFF; // OBP1
-  cpu->memory[0xFF4A] = 0x00; // WY
-  cpu->memory[0xFF4B] = 0x00; // WX
-  cpu->memory[0xFFFF] = 0x00; // IE
+void gameboy_initialize(Gameboy* gb) {
+  memset(gb->memory, 0, 65536);
+  *CPU_AF_REF(gb) = 0x01B0;
+  *CPU_BC_REF(gb) = 0x0013;
+  *CPU_DE_REF(gb) = 0x00D8;
+  *CPU_HL_REF(gb) = 0x014D;
+  gb->SP = 0xFFFE;
+  gb->PC = 0x0100;
+  gb->memory[REG_TIMA] = 0x00;
+  gb->memory[REG_TMA] = 0x00;
+  gb->memory[REG_TAC] = 0x00;
+  gb->memory[REG_NR10] = 0x80;
+  gb->memory[REG_NR11] = 0xBF;
+  gb->memory[REG_NR12] = 0xF3;
+  gb->memory[REG_NR14] = 0xBF;
+  gb->memory[REG_NR21] = 0x3F;
+  gb->memory[REG_NR22] = 0x00;
+  gb->memory[REG_NR24] = 0xBF;
+  gb->memory[REG_NR30] = 0x7F;
+  gb->memory[REG_NR31] = 0xFF;
+  gb->memory[REG_NR32] = 0x9F;
+  gb->memory[REG_NR33] = 0xBF;
+  gb->memory[REG_NR41] = 0xFF;
+  gb->memory[REG_NR42] = 0x00;
+  gb->memory[REG_NR43] = 0x00;
+  gb->memory[REG_NR30] = 0xBF;
+  gb->memory[REG_NR50] = 0x77;
+  gb->memory[REG_NR51] = 0xF3;
+  gb->memory[REG_NR52] = 0x0F;
+  gb->memory[REG_LCDC] = 0x91;
+  gb->memory[REG_SCY] = 0x00;
+  gb->memory[REG_SCX] = 0x00;
+  gb->memory[REG_LYC] = 0x00;
+  gb->memory[REG_BGP] = 0xFC;
+  gb->memory[REG_OBP0] = 0xFF;
+  gb->memory[REG_OBP1] = 0xFF;
+  gb->memory[REG_WY] = 0x00;
+  gb->memory[REG_WX] = 0x00;
+  gb->memory[REG_IE] = 0x00;
 
-  cpu->IME = 0;
-  cpu->set_ime_after_n_instructions = -1;
-  cpu->unset_ime_after_n_instructions = -1;
+  gb->IME = 0;
+  gb->set_ime_after_n_instructions = -1;
+  gb->unset_ime_after_n_instructions = -1;
 }
 
-void cpu_read_mem(Cpu* cpu, unsigned short address, unsigned char* output, int len) {
-  memcpy(output, cpu->memory + address, len);
+void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
+  memcpy(output, gb->memory + address, len);
 }
 
-void cpu_write_mem(Cpu* cpu, unsigned short address, unsigned char* data, int len) {
-  if (address == 0xff02) { // SC
-    printf("%c\n", cpu->memory[0xff01]); // SB
+void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len) {
+  if (address == REG_SC) {
+    printf("%c\n", gb->memory[REG_SB]);
+  } else if (address == REG_DIV) {
+    gb->memory[REG_DIV] = 0;
   } else {
-    memcpy(cpu->memory + address, data, len);
+    memcpy(gb->memory + address, data, len);
   }
 }
 
-void cpu_print_instruction(Cpu* cpu) {
+void gameboy_print_instruction(Gameboy* gb) {
   unsigned char opcode;
-  cpu_read_mem(cpu, cpu->PC, &opcode, 1);
+  gameboy_read_mem(gb, gb->PC, &opcode, 1);
 
   char* instructions[256];
   instructions[0x00] = "NOP";
@@ -458,7 +501,7 @@ void cpu_print_instruction(Cpu* cpu) {
       opcode == 0xfe
   ) {
     unsigned char arg;
-    cpu_read_mem(cpu, cpu->PC + 1, &arg, 1);
+    gameboy_read_mem(gb, gb->PC + 1, &arg, 1);
     printf("arg: %03d (0x%02x)\n", arg, arg);
   } else if (
     opcode == 0x01 ||
@@ -480,14 +523,14 @@ void cpu_print_instruction(Cpu* cpu) {
     opcode == 0xfa
   ) {
     unsigned short arg;
-    cpu_read_mem(cpu, cpu->PC + 1, (unsigned char*)&arg, 2);
+    gameboy_read_mem(gb, gb->PC + 1, (unsigned char*)&arg, 2);
     printf("arg: %05d (0x%04x)\n", arg, arg);
   } else {
     printf("\n");
   }
 }
 
-void cpu_dump_registers(Cpu* cpu) {
+void gameboy_dump_registers(Gameboy* gb) {
   printf(
       "A: %03d (0x%02x) \
 B: %03d (0x%02x) \
@@ -508,43 +551,43 @@ HL: %05d (0x%04x)\n\
 SP: %05d (0x%04x) \
 PC: %05d (0x%04x)\n",
 
-      cpu->A, cpu->A,
-      cpu->B, cpu->B,
-      cpu->C, cpu->C,
-      cpu->D, cpu->D,
-      cpu->E, cpu->E,
-      cpu->H, cpu->H,
-      cpu->L, cpu->L,
-      cpu->F, cpu->F,
-      CPU_FLAG_Z(cpu->F),
-      CPU_FLAG_H(cpu->F),
-      CPU_FLAG_N(cpu->F),
-      CPU_FLAG_C(cpu->F),
-      CPU_AF(cpu), CPU_AF(cpu),
-      CPU_BC(cpu), CPU_BC(cpu),
-      CPU_DE(cpu), CPU_DE(cpu),
-      CPU_HL(cpu), CPU_HL(cpu),
-      cpu->SP, cpu->SP,
-      cpu->PC, cpu->PC
+      gb->A, gb->A,
+      gb->B, gb->B,
+      gb->C, gb->C,
+      gb->D, gb->D,
+      gb->E, gb->E,
+      gb->H, gb->H,
+      gb->L, gb->L,
+      gb->F, gb->F,
+      CPU_FLAG_Z(gb->F),
+      CPU_FLAG_H(gb->F),
+      CPU_FLAG_N(gb->F),
+      CPU_FLAG_C(gb->F),
+      CPU_AF(gb), CPU_AF(gb),
+      CPU_BC(gb), CPU_BC(gb),
+      CPU_DE(gb), CPU_DE(gb),
+      CPU_HL(gb), CPU_HL(gb),
+      gb->SP, gb->SP,
+      gb->PC, gb->PC
   );
 }
 
-void cpu_dump_stack(Cpu* cpu) {
+void gameboy_dump_stack(Gameboy* gb) {
   printf("Stack:\n");
   for (unsigned short addr = 0xfffe; addr >= 0xfff0; addr--) {
-    printf("0x%02x: %03d (0x%02d)\n", addr, cpu->memory[addr], cpu->memory[addr]);
+    printf("0x%02x: %03d (0x%02d)\n", addr, gb->memory[addr], gb->memory[addr]);
   }
 }
 
-void cpu_step_clock(Cpu* cpu) {
+int gameboy_execute_instruction(Gameboy* gb) {
   if (DEBUG) {
     printf("Executing: ");
-    cpu_print_instruction(cpu);
+    gameboy_print_instruction(gb);
   }
 
   unsigned char opcode;
-  cpu_read_mem(cpu, cpu->PC, &opcode, 1);
-  cpu->PC++;
+  gameboy_read_mem(gb, gb->PC, &opcode, 1);
+  gb->PC++;
 
   int num_cycles;
   switch (opcode) {
@@ -555,20 +598,20 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x01:
       // LD BC,d16
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_BC_REF(cpu), 2);
-      cpu->PC += 2;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)CPU_BC_REF(gb), 2);
+      gb->PC += 2;
       num_cycles = 12;
       break;
 
     case 0x02:
       // LD (BC),A
-      cpu_write_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
+      gameboy_write_mem(gb, CPU_BC(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0x03:
       // INC BC
-      *CPU_BC_REF(cpu) = *CPU_BC_REF(cpu) + 1;
+      *CPU_BC_REF(gb) = *CPU_BC_REF(gb) + 1;
       num_cycles = 8;
       break;
 
@@ -577,8 +620,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->B, 1, &cpu->B, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->B == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->B, 1, &gb->B, &carry, &half_carry);
+        gb->F = CPU_F(gb->B == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -588,25 +631,25 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->B, 1, &cpu->B, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->B == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->B, 1, &gb->B, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->B == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x06:
       // LD B,d8
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->B, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)&gb->B, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x07:
       // RLCA
       {
-        unsigned char bit = BIT(cpu->A, 7);
-        cpu->A = (cpu->A << 1) | bit;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 0, bit);
+        unsigned char bit = BIT(gb->A, 7);
+        gb->A = (gb->A << 1) | bit;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, bit);
         num_cycles = 4;
       }
       break;
@@ -615,9 +658,9 @@ void cpu_step_clock(Cpu* cpu) {
       // LD (a16),SP
       {
         unsigned short address;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
-        cpu->PC += 2;
-        cpu_write_mem(cpu, address, (unsigned char*)&cpu->SP, 2);
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&address, 2);
+        gb->PC += 2;
+        gameboy_write_mem(gb, address, (unsigned char*)&gb->SP, 2);
         num_cycles = 20;
       }
       break;
@@ -627,21 +670,21 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(CPU_HL(cpu), CPU_BC(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
-        cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
+        add_16_bit(CPU_HL(gb), CPU_BC(gb), CPU_HL_REF(gb), &carry, &half_carry);
+        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
 
     case 0x0a:
       // LD A,(BC)
-      cpu_read_mem(cpu, CPU_BC(cpu), &cpu->A, 1);
+      gameboy_read_mem(gb, CPU_BC(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0x0b:
       // DEC BC
-      *CPU_BC_REF(cpu) = *CPU_BC_REF(cpu) - 1;
+      *CPU_BC_REF(gb) = *CPU_BC_REF(gb) - 1;
       num_cycles = 8;
       break;
 
@@ -650,8 +693,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->C, 1, &cpu->C, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->C == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->C, 1, &gb->C, &carry, &half_carry);
+        gb->F = CPU_F(gb->C == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -661,25 +704,25 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->C, 1, &cpu->C, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->C == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->C, 1, &gb->C, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->C == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x0e:
       // LD C,d8
-      cpu_read_mem(cpu, cpu->PC, &cpu->C, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, &gb->C, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x0f:
       // RRCA
       {
-        unsigned char bit = BIT(cpu->A, 0);
-        cpu->A = (cpu->A >> 1) | (bit << 7);
-        cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
+        unsigned char bit = BIT(gb->A, 0);
+        gb->A = (gb->A >> 1) | (bit << 7);
+        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
         num_cycles = 4;
       }
       break;
@@ -687,26 +730,26 @@ void cpu_step_clock(Cpu* cpu) {
     case 0x10:
       // STOP 0
       assert(false);
-      cpu->PC++;
+      gb->PC++;
       num_cycles = 4;
       break;
 
     case 0x11:
       // LD DE,d16
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_DE_REF(cpu), 2);
-      cpu->PC += 2;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)CPU_DE_REF(gb), 2);
+      gb->PC += 2;
       num_cycles = 12;
       break;
 
     case 0x12:
       // LD (DE),A
-      cpu_write_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
+      gameboy_write_mem(gb, CPU_DE(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0x13:
       // INC DE
-      *CPU_DE_REF(cpu) = *CPU_DE_REF(cpu) + 1;
+      *CPU_DE_REF(gb) = *CPU_DE_REF(gb) + 1;
       num_cycles = 8;
       break;
 
@@ -715,8 +758,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->D, 1, &cpu->D, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->D == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->D, 1, &gb->D, &carry, &half_carry);
+        gb->F = CPU_F(gb->D == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -726,25 +769,25 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->D, 1, &cpu->D, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->D == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->D, 1, &gb->D, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->D == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x16:
       // LD D,d8
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->D, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)&gb->D, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x17:
       // RLA
       {
-        unsigned char bit = BIT(cpu->A, 7);
-        cpu->A = (cpu->A << 1) | CPU_FLAG_C(cpu->F);
-        cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z is up for debate.
+        unsigned char bit = BIT(gb->A, 7);
+        gb->A = (gb->A << 1) | CPU_FLAG_C(gb->F);
+        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z is up for debate.
         num_cycles = 4;
       }
       break;
@@ -753,9 +796,9 @@ void cpu_step_clock(Cpu* cpu) {
       // JR r8
       {
         char offset;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
-        cpu->PC++;
-        cpu->PC += offset;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
+        gb->PC++;
+        gb->PC += offset;
         num_cycles = 12;
       }
       break;
@@ -765,21 +808,21 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(CPU_HL(cpu), CPU_DE(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
-        cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
+        add_16_bit(CPU_HL(gb), CPU_DE(gb), CPU_HL_REF(gb), &carry, &half_carry);
+        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
 
     case 0x1a:
       // LD A,(DE)
-      cpu_read_mem(cpu, CPU_DE(cpu), &cpu->A, 1);
+      gameboy_read_mem(gb, CPU_DE(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0x1b:
       // DEC DE
-      *CPU_DE_REF(cpu) = *CPU_DE_REF(cpu) - 1;
+      *CPU_DE_REF(gb) = *CPU_DE_REF(gb) - 1;
       num_cycles = 8;
       break;
 
@@ -788,8 +831,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->E, 1, &cpu->E, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->E == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->E, 1, &gb->E, &carry, &half_carry);
+        gb->F = CPU_F(gb->E == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -799,25 +842,25 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->E, 1, &cpu->E, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->E == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->E, 1, &gb->E, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->E == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x1e:
       // LD E,d8
-      cpu_read_mem(cpu, cpu->PC, &cpu->E, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, &gb->E, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x1f:
       // RRA
       {
-        unsigned char bit = BIT(cpu->A, 0);
-        cpu->A = (cpu->A >> 1) | (CPU_FLAG_C(cpu->F) << 7);
-        cpu->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is up for debate.
+        unsigned char bit = BIT(gb->A, 0);
+        gb->A = (gb->A >> 1) | (CPU_FLAG_C(gb->F) << 7);
+        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is up for debate.
         num_cycles = 4;
       }
       break;
@@ -828,29 +871,29 @@ void cpu_step_clock(Cpu* cpu) {
     case 0x38: // JR C,r8
       {
         char offset;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
+        gb->PC++;
 
         bool jump;
         switch (opcode) {
           case 0x20:
-            jump = !CPU_FLAG_Z(cpu->F);
+            jump = !CPU_FLAG_Z(gb->F);
             break;
           case 0x28:
-            jump = CPU_FLAG_Z(cpu->F);
+            jump = CPU_FLAG_Z(gb->F);
             break;
           case 0x30:
-            jump = !CPU_FLAG_C(cpu->F);
+            jump = !CPU_FLAG_C(gb->F);
             break;
           case 0x38:
-            jump = CPU_FLAG_C(cpu->F);
+            jump = CPU_FLAG_C(gb->F);
             break;
           default:
             assert(false);
         }
 
         if (jump) {
-          cpu->PC += offset;
+          gb->PC += offset;
           num_cycles = 12;
         } else {
           num_cycles = 8;
@@ -860,21 +903,21 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x21:
       // LD HL,d16
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_HL_REF(cpu), 2);
-      cpu->PC += 2;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)CPU_HL_REF(gb), 2);
+      gb->PC += 2;
       num_cycles = 12;
       break;
 
     case 0x22:
       // LD (HL+),A
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->A, 1);
+      *CPU_HL_REF(gb) = CPU_HL(gb) + 1;
       num_cycles = 8;
       break;
 
     case 0x23:
       // INC HL
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
+      *CPU_HL_REF(gb) = CPU_HL(gb) + 1;
       num_cycles = 8;
       break;
 
@@ -883,8 +926,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->H, 1, &cpu->H, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->H == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->H, 1, &gb->H, &carry, &half_carry);
+        gb->F = CPU_F(gb->H == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -894,16 +937,16 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->H, 1, &cpu->H, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->H == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->H, 1, &gb->H, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->H == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x26:
       // LD H,d8
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->H, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)&gb->H, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
@@ -911,18 +954,18 @@ void cpu_step_clock(Cpu* cpu) {
       // DAA
       // TODO: WTF is this: http://z80-heaven.wikidot.com/instructions-set:daa
       {
-        unsigned char low_nibble = cpu->A & 0xf;
-        if (low_nibble > 9 || CPU_FLAG_H(cpu->F)) {
-          cpu->A += 6;
+        unsigned char low_nibble = gb->A & 0xf;
+        if (low_nibble > 9 || CPU_FLAG_H(gb->F)) {
+          gb->A += 6;
         }
 
-        unsigned char high_nibble = cpu->A >> 4;
-        bool do_second_addition = high_nibble > 9 || CPU_FLAG_C(cpu->F);
+        unsigned char high_nibble = gb->A >> 4;
+        bool do_second_addition = high_nibble > 9 || CPU_FLAG_C(gb->F);
         if (do_second_addition) {
-          cpu->A += 0x60;
+          gb->A += 0x60;
         }
 
-        cpu->F = CPU_F(cpu->A == 0, CPU_FLAG_N(cpu->F), 0, do_second_addition ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0, CPU_FLAG_N(gb->F), 0, do_second_addition ? 1 : 0);
         num_cycles = 4;
       }
       break;
@@ -932,22 +975,22 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(CPU_HL(cpu), CPU_HL(cpu), CPU_HL_REF(cpu), &carry, &half_carry);
-        cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
+        add_16_bit(CPU_HL(gb), CPU_HL(gb), CPU_HL_REF(gb), &carry, &half_carry);
+        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
 
     case 0x2a:
       // LD A,(HL+)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) + 1;
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->A, 1);
+      *CPU_HL_REF(gb) = CPU_HL(gb) + 1;
       num_cycles = 8;
       break;
 
     case 0x2b:
       // DEC HL
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
+      *CPU_HL_REF(gb) = CPU_HL(gb) - 1;
       num_cycles = 8;
       break;
 
@@ -956,8 +999,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->L, 1, &cpu->L, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->L == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->L, 1, &gb->L, &carry, &half_carry);
+        gb->F = CPU_F(gb->L == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -967,42 +1010,42 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->L, 1, &cpu->L, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->L == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->L, 1, &gb->L, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->L == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x2e:
       // LD L,d8
-      cpu_read_mem(cpu, cpu->PC, &cpu->L, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, &gb->L, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x2f:
       // CPL
-      cpu->A = ~cpu->A;
+      gb->A = ~gb->A;
       num_cycles = 4;
       break;
 
     case 0x31:
       // LD SP,d16
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->SP, 2);
-      cpu->PC += 2;
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)&gb->SP, 2);
+      gb->PC += 2;
       num_cycles = 12;
       break;
 
     case 0x32:
       // LD (HL-),A
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->A, 1);
+      *CPU_HL_REF(gb) = CPU_HL(gb) - 1;
       num_cycles = 8;
       break;
 
     case 0x33:
       // INC SP
-      cpu->SP++;
+      gb->SP++;
       num_cycles = 8;
       break;
 
@@ -1010,13 +1053,13 @@ void cpu_step_clock(Cpu* cpu) {
       // INC (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
+        gb->PC++;
 
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(value, 1, CPU_HL_REF(cpu), &carry, &half_carry);
-        cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_16_bit(value, 1, CPU_HL_REF(gb), &carry, &half_carry);
+        gb->F = CPU_F(CPU_HL(gb) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 12;
       }
       break;
@@ -1025,12 +1068,12 @@ void cpu_step_clock(Cpu* cpu) {
       // DEC (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_16_bit(value, 1, CPU_HL_REF(cpu), &borrow, &half_borrow);
-        cpu->F = CPU_F(CPU_HL(cpu) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_16_bit(value, 1, CPU_HL_REF(gb), &borrow, &half_borrow);
+        gb->F = CPU_F(CPU_HL(gb) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 12;
       }
       break;
@@ -1039,17 +1082,17 @@ void cpu_step_clock(Cpu* cpu) {
       // LD (HL),d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
-        cpu_write_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_write_mem(gb, CPU_HL(gb), &value, 1);
         num_cycles = 12;
       }
       break;
 
     case 0x37:
       // SCF
-      cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, 0, 1);
+      gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, 0, 1);
       num_cycles = 4;
       break;
 
@@ -1058,22 +1101,22 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(CPU_HL(cpu), cpu->SP, CPU_HL_REF(cpu), &carry, &half_carry);
-        cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, half_carry, carry);
+        add_16_bit(CPU_HL(gb), gb->SP, CPU_HL_REF(gb), &carry, &half_carry);
+        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
 
     case 0x3a:
       // LD A,(HL-)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
-      *CPU_HL_REF(cpu) = CPU_HL(cpu) - 1;
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->A, 1);
+      *CPU_HL_REF(gb) = CPU_HL(gb) - 1;
       num_cycles = 8;
       break;
 
     case 0x3b:
       // DEC SP
-      cpu->SP--;
+      gb->SP--;
       num_cycles = 8;
       break;
 
@@ -1082,8 +1125,8 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->A, 1, &cpu->A, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(cpu->F));
+        add_8_bit(gb->A, 1, &gb->A, &carry, &half_carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -1093,22 +1136,22 @@ void cpu_step_clock(Cpu* cpu) {
       {
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->A, 1, &cpu->A, &borrow, &half_borrow);
-        cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 1, half_borrow, CPU_FLAG_C(cpu->F));
+        sub_8_bit(gb->A, 1, &gb->A, &borrow, &half_borrow);
+        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
 
     case 0x3e:
       // LD A,d8
-      cpu_read_mem(cpu, cpu->PC, &cpu->A, 1);
-      cpu->PC++;
+      gameboy_read_mem(gb, gb->PC, &gb->A, 1);
+      gb->PC++;
       num_cycles = 8;
       break;
 
     case 0x3f:
       // CCF
-      cpu->F = CPU_F(CPU_FLAG_Z(cpu->F), 0, 0, CPU_FLAG_C(cpu->F) ? 0 : 1);
+      gb->F = CPU_F(CPU_FLAG_Z(gb->F), 0, 0, CPU_FLAG_C(gb->F) ? 0 : 1);
       num_cycles = 4;
       break;
 
@@ -1169,24 +1212,24 @@ void cpu_step_clock(Cpu* cpu) {
         switch (high_nibble) {
           case 4:
             if (low_nibble <= 7)
-              dest = &cpu->B;
+              dest = &gb->B;
             else
-              dest = &cpu->C;
+              dest = &gb->C;
             break;
           case 5:
             if (low_nibble <= 7)
-              dest = &cpu->D;
+              dest = &gb->D;
             else
-              dest = &cpu->E;
+              dest = &gb->E;
             break;
           case 6:
             if (low_nibble <= 7)
-              dest = &cpu->H;
+              dest = &gb->H;
             else
-              dest = &cpu->L;
+              dest = &gb->L;
             break;
           case 7:
-            dest = &cpu->A;
+            dest = &gb->A;
             break;
           default:
             assert(false);
@@ -1195,25 +1238,25 @@ void cpu_step_clock(Cpu* cpu) {
         unsigned char* src = NULL;
         switch (low_nibble % 8) {
           case 0:
-            src = &cpu->B;
+            src = &gb->B;
             break;
           case 1:
-            src = &cpu->C;
+            src = &gb->C;
             break;
           case 2:
-            src = &cpu->D;
+            src = &gb->D;
             break;
           case 3:
-            src = &cpu->E;
+            src = &gb->E;
             break;
           case 4:
-            src = &cpu->H;
+            src = &gb->H;
             break;
           case 5:
-            src = &cpu->L;
+            src = &gb->L;
             break;
           case 7:
-            src = &cpu->A;
+            src = &gb->A;
             break;
           default:
             assert(false);
@@ -1228,73 +1271,73 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x46:
       // LD B,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->B, 1);
       num_cycles = 8;
       break;
 
     case 0x4e:
       // LD C,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->C, 1);
       num_cycles = 8;
       break;
 
     case 0x56:
       // LD D,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->D, 1);
       num_cycles = 8;
       break;
 
     case 0x5e:
       // LD E,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->E, 1);
       num_cycles = 8;
       break;
 
     case 0x66:
       // LD H,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->H, 1);
       num_cycles = 8;
       break;
 
     case 0x6e:
       // LD L,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->L, 1);
       num_cycles = 8;
       break;
 
     case 0x70:
       // LD (HL),B
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->B, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->B, 1);
       num_cycles = 8;
       break;
 
     case 0x71:
       // LD (HL),C
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->C, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->C, 1);
       num_cycles = 8;
       break;
 
     case 0x72:
       // LD (HL),D
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->D, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->D, 1);
       num_cycles = 8;
       break;
 
     case 0x73:
       // LD (HL),E
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->E, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->E, 1);
       num_cycles = 8;
       break;
 
     case 0x74:
       // LD (HL),H
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->H, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->H, 1);
       num_cycles = 8;
       break;
 
     case 0x75:
       // LD (HL),L
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->L, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->L, 1);
       num_cycles = 8;
       break;
 
@@ -1306,13 +1349,13 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0x77:
       // LD (HL),A
-      cpu_write_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+      gameboy_write_mem(gb, CPU_HL(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0x7e:
       // LD A,(HL)
-      cpu_read_mem(cpu, CPU_HL(cpu), &cpu->A, 1);
+      gameboy_read_mem(gb, CPU_HL(gb), &gb->A, 1);
       num_cycles = 8;
       break;
 
@@ -1378,25 +1421,25 @@ void cpu_step_clock(Cpu* cpu) {
         unsigned char source;
         switch (low_nibble % 8) {
           case 0:
-            source = cpu->B;
+            source = gb->B;
             break;
           case 1:
-            source = cpu->C;
+            source = gb->C;
             break;
           case 2:
-            source = cpu->D;
+            source = gb->D;
             break;
           case 3:
-            source = cpu->E;
+            source = gb->E;
             break;
           case 4:
-            source = cpu->H;
+            source = gb->H;
             break;
           case 5:
-            source = cpu->L;
+            source = gb->L;
             break;
           case 7:
-            source = cpu->A;
+            source = gb->A;
             break;
           default:
             assert(false);
@@ -1410,19 +1453,19 @@ void cpu_step_clock(Cpu* cpu) {
               // ADD
               unsigned char carry;
               unsigned char half_carry;
-              add_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+              add_8_bit(gb->A, source, &gb->A, &carry, &half_carry);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
             } else {
               // ADC
               unsigned char carry_1;
               unsigned char half_carry_1;
-              add_8_bit(cpu->A, source, &cpu->A, &carry_1, &half_carry_1);
+              add_8_bit(gb->A, source, &gb->A, &carry_1, &half_carry_1);
 
               unsigned char carry_2;
               unsigned char half_carry_2;
-              add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+              add_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
             }
             break;
 
@@ -1431,46 +1474,46 @@ void cpu_step_clock(Cpu* cpu) {
               // SUB
               unsigned char borrow;
               unsigned char half_borrow;
-              sub_8_bit(cpu->A, source, &cpu->A, &borrow, &half_borrow);
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+              sub_8_bit(gb->A, source, &gb->A, &borrow, &half_borrow);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
             } else {
               // SBC
               unsigned char borrow_1;
               unsigned char half_borrow_1;
-              sub_8_bit(cpu->A, source, &cpu->A, &borrow_1, &half_borrow_1);
+              sub_8_bit(gb->A, source, &gb->A, &borrow_1, &half_borrow_1);
 
               unsigned char borrow_2;
               unsigned char half_borrow_2;
-              sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &borrow_2, &half_borrow_2);
+              sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &borrow_2, &half_borrow_2);
 
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
             }
             break;
 
           case 10:
             if (low_nibble < 8) {
               // AND
-              cpu->A = cpu->A & source;
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+              gb->A = gb->A & source;
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
             } else {
               // XOR
-              cpu->A = cpu->A ^ source;
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 0, 0);
+              gb->A = gb->A ^ source;
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
             }
             break;
 
           case 11:
             if (low_nibble < 8) {
               // OR
-              cpu->A = cpu->A | source;
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+              gb->A = gb->A | source;
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
             } else {
               // CP
               unsigned char trash;
               unsigned char borrow;
               unsigned char half_borrow;
-              sub_8_bit(cpu->A, source, &trash, &borrow, &half_borrow);
-              cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+              sub_8_bit(gb->A, source, &trash, &borrow, &half_borrow);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
             }
             break;
           default:
@@ -1485,12 +1528,12 @@ void cpu_step_clock(Cpu* cpu) {
       // ADD A,(HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+        add_8_bit(gb->A, value, &gb->A, &carry, &half_carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
@@ -1499,17 +1542,17 @@ void cpu_step_clock(Cpu* cpu) {
       // ADC A,(HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char carry_1;
         unsigned char half_carry_1;
-        add_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+        add_8_bit(gb->A, value, &gb->A, &carry_1, &half_carry_1);
 
         unsigned char carry_2;
         unsigned char half_carry_2;
-        add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+        add_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
         num_cycles = 8;
       }
       break;
@@ -1518,12 +1561,12 @@ void cpu_step_clock(Cpu* cpu) {
       // SUB (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char carry;
         unsigned char half_carry;
-        sub_8_bit(cpu->A, value, &cpu->A, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+        sub_8_bit(gb->A, value, &gb->A, &carry, &half_carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
@@ -1532,17 +1575,17 @@ void cpu_step_clock(Cpu* cpu) {
       // SBC A,(HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char carry_1;
         unsigned char half_carry_1;
-        sub_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+        sub_8_bit(gb->A, value, &gb->A, &carry_1, &half_carry_1);
 
         unsigned char carry_2;
         unsigned char half_carry_2;
-        sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+        sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
         num_cycles = 8;
       }
       break;
@@ -1551,10 +1594,10 @@ void cpu_step_clock(Cpu* cpu) {
       // AND (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
-        cpu->A = cpu->A & value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A & value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -1563,10 +1606,10 @@ void cpu_step_clock(Cpu* cpu) {
       // XOR (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
-        cpu->A = cpu->A ^ value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A ^ value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -1575,10 +1618,10 @@ void cpu_step_clock(Cpu* cpu) {
       // OR (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
-        cpu->A = cpu->A | value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A | value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -1587,12 +1630,12 @@ void cpu_step_clock(Cpu* cpu) {
       // CP (HL)
       {
         unsigned char value;
-        cpu_read_mem(cpu, CPU_HL(cpu), &value, 1);
+        gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         unsigned char trash;
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
+        sub_8_bit(gb->A, value, &trash, &borrow, &half_borrow);
 
         num_cycles = 8;
       }
@@ -1606,24 +1649,24 @@ void cpu_step_clock(Cpu* cpu) {
         bool ret;
         switch (opcode) {
           case 0xc0:
-            ret = !CPU_FLAG_Z(cpu->F);
+            ret = !CPU_FLAG_Z(gb->F);
             break;
           case 0xc8:
-            ret = CPU_FLAG_Z(cpu->F);
+            ret = CPU_FLAG_Z(gb->F);
             break;
           case 0xd0:
-            ret = !CPU_FLAG_C(cpu->F);
+            ret = !CPU_FLAG_C(gb->F);
             break;
           case 0xd8:
-            ret = CPU_FLAG_C(cpu->F);
+            ret = CPU_FLAG_C(gb->F);
             break;
           default:
             assert(false);
         }
 
         if (ret) {
-          cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
-          cpu->SP += 2;
+          gameboy_read_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+          gb->SP += 2;
           num_cycles = 20;
         } else {
           num_cycles = 8;
@@ -1633,8 +1676,8 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xc9:
       // RET
-      cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
-      cpu->SP += 2;
+      gameboy_read_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+      gb->SP += 2;
       num_cycles = 16;
       break;
 
@@ -1646,27 +1689,27 @@ void cpu_step_clock(Cpu* cpu) {
         unsigned short* dest;
         switch (opcode >> 4) {
           case 12:
-            dest = CPU_BC_REF(cpu);
+            dest = CPU_BC_REF(gb);
             break;
           case 13:
-            dest = CPU_DE_REF(cpu);
+            dest = CPU_DE_REF(gb);
             break;
           case 14:
-            dest = CPU_HL_REF(cpu);
+            dest = CPU_HL_REF(gb);
             break;
           case 15:
-            dest = CPU_AF_REF(cpu);
+            dest = CPU_AF_REF(gb);
             break;
           default:
             assert(false);
         }
 
-        cpu_read_mem(cpu, cpu->SP, (unsigned char*)dest, 2);
-        cpu->SP += 2;
+        gameboy_read_mem(gb, gb->SP, (unsigned char*)dest, 2);
+        gb->SP += 2;
 
         if (opcode == 0xf1) {
           // Discard lower nibble.
-          cpu->F = (cpu->F >> 4) << 4;
+          gb->F = (gb->F >> 4) << 4;
         }
 
         num_cycles = 12;
@@ -1681,27 +1724,27 @@ void cpu_step_clock(Cpu* cpu) {
         bool jump;
         switch (opcode) {
           case 0xca:
-            jump = !CPU_FLAG_Z(cpu->F);
+            jump = !CPU_FLAG_Z(gb->F);
             break;
           case 0xc2:
-            jump = CPU_FLAG_Z(cpu->F);
+            jump = CPU_FLAG_Z(gb->F);
             break;
           case 0xd2:
-            jump = !CPU_FLAG_C(cpu->F);
+            jump = !CPU_FLAG_C(gb->F);
             break;
           case 0xda:
-            jump = CPU_FLAG_C(cpu->F);
+            jump = CPU_FLAG_C(gb->F);
             break;
           default:
             assert(false);
         }
 
         unsigned short dest;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
-        cpu->PC += 2;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&dest, 2);
+        gb->PC += 2;
 
         if (jump) {
-          cpu->PC = dest;
+          gb->PC = dest;
           num_cycles = 16;
         } else {
           num_cycles = 12;
@@ -1711,7 +1754,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xc3:
       // JP a16
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)&cpu->PC, 2);
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)&gb->PC, 2);
       num_cycles = 16;
       break;
 
@@ -1723,29 +1766,29 @@ void cpu_step_clock(Cpu* cpu) {
         bool call;
         switch (opcode) {
           case 0xc4:
-            call = !CPU_FLAG_Z(cpu->F);
+            call = !CPU_FLAG_Z(gb->F);
             break;
           case 0xcc:
-            call = CPU_FLAG_Z(cpu->F);
+            call = CPU_FLAG_Z(gb->F);
             break;
           case 0xd4:
-            call = !CPU_FLAG_C(cpu->F);
+            call = !CPU_FLAG_C(gb->F);
             break;
           case 0xdc:
-            call = CPU_FLAG_C(cpu->F);
+            call = CPU_FLAG_C(gb->F);
             break;
           default:
             assert(false);
         }
 
         unsigned short dest;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
-        cpu->PC += 2;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&dest, 2);
+        gb->PC += 2;
 
         if (call) {
-          cpu->SP -= 2;
-          cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
-          cpu->PC = dest;
+          gb->SP -= 2;
+          gameboy_write_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+          gb->PC = dest;
           num_cycles = 24;
         } else {
           num_cycles = 12;
@@ -1756,12 +1799,12 @@ void cpu_step_clock(Cpu* cpu) {
     case 0xcd: // CALL a16
       {
         unsigned short dest;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&dest, 2);
-        cpu->PC += 2;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&dest, 2);
+        gb->PC += 2;
 
-        cpu->SP -= 2;
-        cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
-        cpu->PC = dest;
+        gb->SP -= 2;
+        gameboy_write_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+        gb->PC = dest;
         num_cycles = 24;
       }
       break;
@@ -1774,23 +1817,23 @@ void cpu_step_clock(Cpu* cpu) {
         unsigned short* src;
         switch (opcode >> 4) {
           case 12:
-            src = CPU_BC_REF(cpu);
+            src = CPU_BC_REF(gb);
             break;
           case 13:
-            src = CPU_DE_REF(cpu);
+            src = CPU_DE_REF(gb);
             break;
           case 14:
-            src = CPU_HL_REF(cpu);
+            src = CPU_HL_REF(gb);
             break;
           case 15:
-            src = CPU_AF_REF(cpu);
+            src = CPU_AF_REF(gb);
             break;
           default:
             assert(false);
         }
 
-        cpu->SP -= 2;
-        cpu_write_mem(cpu, cpu->SP, (unsigned char*)src, 2);
+        gb->SP -= 2;
+        gameboy_write_mem(gb, gb->SP, (unsigned char*)src, 2);
 
         num_cycles = 16;
       }
@@ -1800,13 +1843,13 @@ void cpu_step_clock(Cpu* cpu) {
       // ADD A,d8
       {
         unsigned char source;
-        cpu_read_mem(cpu, cpu->PC, &source, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &source, 1);
+        gb->PC++;
 
         unsigned char carry;
         unsigned char half_carry;
-        add_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+        add_8_bit(gb->A, source, &gb->A, &carry, &half_carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
@@ -1850,10 +1893,10 @@ void cpu_step_clock(Cpu* cpu) {
             assert(false);
         }
 
-        cpu->SP -= 2;
-        cpu_write_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
+        gb->SP -= 2;
+        gameboy_write_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
 
-        cpu->PC = dest;
+        gb->PC = dest;
         num_cycles = 16;
       }
       break;
@@ -1861,7 +1904,7 @@ void cpu_step_clock(Cpu* cpu) {
     case 0xcb:
       // PREFIX CB
       /* assert(false); */
-      cpu->PC++;
+      gb->PC++;
       num_cycles = 4;
       break;
 
@@ -1869,18 +1912,18 @@ void cpu_step_clock(Cpu* cpu) {
       // ADC A,d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
         unsigned char carry_1;
         unsigned char half_carry_1;
-        add_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+        add_8_bit(gb->A, value, &gb->A, &carry_1, &half_carry_1);
 
         unsigned char carry_2;
         unsigned char half_carry_2;
-        add_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+        add_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
         num_cycles = 8;
       }
       break;
@@ -1889,22 +1932,22 @@ void cpu_step_clock(Cpu* cpu) {
       // SUB d8
       {
         unsigned char source;
-        cpu_read_mem(cpu, cpu->PC, &source, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &source, 1);
+        gb->PC++;
 
         unsigned char carry;
         unsigned char half_carry;
-        sub_8_bit(cpu->A, source, &cpu->A, &carry, &half_carry);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry, carry);
+        sub_8_bit(gb->A, source, &gb->A, &carry, &half_carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
         num_cycles = 8;
       }
       break;
 
     case 0xd9:
       // RETI
-      cpu_read_mem(cpu, cpu->SP, (unsigned char*)&cpu->PC, 2);
-      cpu->SP += 2;
-      cpu->IME = 1;
+      gameboy_read_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
+      gb->SP += 2;
+      gb->IME = 1;
       num_cycles = 16;
       break;
 
@@ -1912,18 +1955,18 @@ void cpu_step_clock(Cpu* cpu) {
       // SBC A,d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
         unsigned char carry_1;
         unsigned char half_carry_1;
-        sub_8_bit(cpu->A, value, &cpu->A, &carry_1, &half_carry_1);
+        sub_8_bit(gb->A, value, &gb->A, &carry_1, &half_carry_1);
 
         unsigned char carry_2;
         unsigned char half_carry_2;
-        sub_8_bit(cpu->A, CPU_FLAG_C(cpu->F), &cpu->A, &carry_2, &half_carry_2);
+        sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
         num_cycles = 8;
       }
       break;
@@ -1932,18 +1975,18 @@ void cpu_step_clock(Cpu* cpu) {
       // LDH (a8),A
       {
         unsigned char addr;
-        cpu_read_mem(cpu, cpu->PC, &addr, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &addr, 1);
+        gb->PC++;
         unsigned short offset_addr = (unsigned short)addr + 0xff00;
-        cpu_write_mem(cpu, offset_addr, &cpu->A, 1);
+        gameboy_write_mem(gb, offset_addr, &gb->A, 1);
         num_cycles = 12;
       }
       break;
 
     case 0xe2:
       // LD (C),A
-      cpu->PC++;
-      cpu_write_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
+      gb->PC++;
+      gameboy_write_mem(gb, 0xff00 + gb->C, &gb->A, 1);
       num_cycles = 8;
       break;
 
@@ -1951,11 +1994,11 @@ void cpu_step_clock(Cpu* cpu) {
       // AND d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
-        cpu->A = cpu->A & value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A & value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -1964,19 +2007,19 @@ void cpu_step_clock(Cpu* cpu) {
       // ADD SP,r8
       {
         char offset;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
+        gb->PC++;
 
         if (offset >= 0) {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(cpu->SP, (unsigned char)offset, &cpu->SP, &carry, &half_carry);
-          cpu->F = CPU_F(0, 0, half_carry, carry);
+          add_16_bit(gb->SP, (unsigned char)offset, &gb->SP, &carry, &half_carry);
+          gb->F = CPU_F(0, 0, half_carry, carry);
         } else {
           unsigned char borrow;
           unsigned char half_borrow;
-          sub_16_bit(cpu->SP, (unsigned char)-offset, &cpu->SP, &borrow, &half_borrow);
-          cpu->F = CPU_F(0, 0, half_borrow, borrow);
+          sub_16_bit(gb->SP, (unsigned char)-offset, &gb->SP, &borrow, &half_borrow);
+          gb->F = CPU_F(0, 0, half_borrow, borrow);
         }
 
         num_cycles = 16;
@@ -1985,7 +2028,7 @@ void cpu_step_clock(Cpu* cpu) {
 
     case 0xe9:
       // JP (HL)
-      cpu_read_mem(cpu, cpu->PC, (unsigned char*)CPU_HL_REF(cpu), 2);
+      gameboy_read_mem(gb, gb->PC, (unsigned char*)CPU_HL_REF(gb), 2);
       num_cycles = 4;
       break;
 
@@ -1993,9 +2036,9 @@ void cpu_step_clock(Cpu* cpu) {
       // LD (a16),A
       {
         unsigned short address;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
-        cpu->PC += 2;
-        cpu_write_mem(cpu, address, &cpu->A, 1);
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&address, 2);
+        gb->PC += 2;
+        gameboy_write_mem(gb, address, &gb->A, 1);
         num_cycles = 16;
       }
       break;
@@ -2004,11 +2047,11 @@ void cpu_step_clock(Cpu* cpu) {
       // XOR d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
-        cpu->A = cpu->A ^ value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A ^ value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -2017,24 +2060,24 @@ void cpu_step_clock(Cpu* cpu) {
       // LDH A,(a8)
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
-        cpu_read_mem(cpu, 0xff00 + value, &cpu->A, 1);
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
+        gameboy_read_mem(gb, 0xff00 + value, &gb->A, 1);
         num_cycles = 12;
       }
       break;
 
     case 0xf2:
       // LD A,(C)
-      cpu->PC++;
-      cpu_read_mem(cpu, 0xff00 + cpu->C, &cpu->A, 1);
+      gb->PC++;
+      gameboy_read_mem(gb, 0xff00 + gb->C, &gb->A, 1);
       num_cycles = 8;
       break;
 
     case 0xf3:
       // DI
-      if (cpu->unset_ime_after_n_instructions == -1)
-        cpu->unset_ime_after_n_instructions = 1;
+      if (gb->unset_ime_after_n_instructions == -1)
+        gb->unset_ime_after_n_instructions = 1;
       num_cycles = 4;
       break;
 
@@ -2042,11 +2085,11 @@ void cpu_step_clock(Cpu* cpu) {
       // OR d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
-        cpu->A = cpu->A | value;
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->A = gb->A | value;
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
         num_cycles = 8;
       }
       break;
@@ -2055,16 +2098,16 @@ void cpu_step_clock(Cpu* cpu) {
       // LD HL,SP+r8
       {
         char offset;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&offset, 1);
-        cpu->PC++;
-        *CPU_HL_REF(cpu) = cpu->SP + offset;
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
+        gb->PC++;
+        *CPU_HL_REF(gb) = gb->SP + offset;
         num_cycles = 12;
       }
       break;
 
     case 0xf9:
       // LD SP,HL
-      cpu->SP = CPU_HL(cpu);
+      gb->SP = CPU_HL(gb);
       num_cycles = 8;
       break;
 
@@ -2072,17 +2115,17 @@ void cpu_step_clock(Cpu* cpu) {
       // LD A,(a16)
       {
         unsigned short address;
-        cpu_read_mem(cpu, cpu->PC, (unsigned char*)&address, 2);
-        cpu->PC += 2;
-        cpu_read_mem(cpu, address, (unsigned char*)&cpu->A, 1);
+        gameboy_read_mem(gb, gb->PC, (unsigned char*)&address, 2);
+        gb->PC += 2;
+        gameboy_read_mem(gb, address, (unsigned char*)&gb->A, 1);
         num_cycles = 16;
       }
       break;
 
     case 0xfb:
       // EI
-      if (cpu->set_ime_after_n_instructions == -1)
-        cpu->set_ime_after_n_instructions = 1;
+      if (gb->set_ime_after_n_instructions == -1)
+        gb->set_ime_after_n_instructions = 1;
       num_cycles = 4;
       break;
 
@@ -2090,14 +2133,14 @@ void cpu_step_clock(Cpu* cpu) {
       // CP d8
       {
         unsigned char value;
-        cpu_read_mem(cpu, cpu->PC, &value, 1);
-        cpu->PC++;
+        gameboy_read_mem(gb, gb->PC, &value, 1);
+        gb->PC++;
 
         unsigned char trash;
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_8_bit(cpu->A, value, &trash, &borrow, &half_borrow);
-        cpu->F = CPU_F(cpu->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+        sub_8_bit(gb->A, value, &trash, &borrow, &half_borrow);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
 
         num_cycles = 8;
       }
@@ -2107,25 +2150,61 @@ void cpu_step_clock(Cpu* cpu) {
       assert(false);
   }
 
-  if (cpu->set_ime_after_n_instructions > 0) {
-    cpu->set_ime_after_n_instructions--;
-    if (cpu->set_ime_after_n_instructions < 0) {
-      cpu->IME = 1;
+  if (gb->set_ime_after_n_instructions > 0) {
+    gb->set_ime_after_n_instructions--;
+    if (gb->set_ime_after_n_instructions < 0) {
+      gb->IME = 1;
     }
   }
 
-  if (cpu->unset_ime_after_n_instructions > 0) {
-    cpu->unset_ime_after_n_instructions--;
-    if (cpu->unset_ime_after_n_instructions < 0) {
-      cpu->IME = 0;
+  if (gb->unset_ime_after_n_instructions > 0) {
+    gb->unset_ime_after_n_instructions--;
+    if (gb->unset_ime_after_n_instructions < 0) {
+      gb->IME = 0;
     }
   }
 
   if (DEBUG) {
-    cpu_dump_registers(cpu);
-    cpu_dump_stack(cpu);
+    gameboy_dump_registers(gb);
+    gameboy_dump_stack(gb);
     printf("\n");
   }
+
+  return num_cycles;
+}
+
+void gameboy_step_clock(Gameboy* gb) {
+  gb->global_simulated_ticks++;
+
+  if (gb->global_simulated_ticks % 256 == 0) {
+    // CPU clock / 256 = 16384 Hz.
+    gb->memory[REG_DIV]++;
+  }
+
+  unsigned char tac = gb->memory[REG_TAC];
+  bool timer_enabled = BIT(tac, 2);
+  int timer_speed = tac & 0x11;
+
+  if (timer_enabled) {
+    int divider = (int[]){ 1024, 16, 64, 256 }[timer_speed];
+
+    if (gb->global_simulated_ticks % divider == 0) {
+      if (gb->memory[REG_TIMA] == 255) {
+        gb->memory[REG_TIMA] = gb->memory[REG_TMA];
+      } else {
+        gb->memory[REG_TIMA]++;
+      }
+    }
+  }
+
+  if (gb->ticks_to_next_instruction > 0) {
+    gb->ticks_to_next_instruction--;
+    return;
+  }
+
+  int num_cycles = gameboy_execute_instruction(gb);
+
+  gb->ticks_to_next_instruction = num_cycles;
 }
 
 void test_math() {
@@ -2185,9 +2264,9 @@ void test_math() {
   }
 }
 
-void cpu_load_rom_from_file(Cpu* cpu, const char* rom_path) {
+void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
   FILE* fp = fopen(rom_path, "r");
-  fread(cpu->memory, 0x8000, 1, fp);
+  fread(gb->memory, 0x8000, 1, fp);
 }
 
 int main(int argc, char **argv) {
@@ -2196,14 +2275,14 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  Cpu cpu;
-  cpu_initialize(&cpu);
+  Gameboy gb;
+  gameboy_initialize(&gb);
 
   const char* rom_path = argv[1];
-  cpu_load_rom_from_file(&cpu, rom_path);
+  gameboy_load_rom_from_file(&gb, rom_path);
 
   while (1)
-    cpu_step_clock(&cpu);
+    gameboy_step_clock(&gb);
 
   return 0;
 }
