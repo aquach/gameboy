@@ -214,7 +214,7 @@ void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output
 
 void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len) {
   if (address == REG_SC) {
-    printf("%d\n", gb->memory[REG_SB]);
+    printf("%c", gb->memory[REG_SB]);
   } else if (address == REG_DIV) {
     gb->memory[REG_DIV] = 0;
   } else {
@@ -578,7 +578,7 @@ PC: %05d (0x%04x)\n",
 
 void gameboy_dump_stack(Gameboy* gb) {
   printf("Stack:\n");
-  for (unsigned short addr = 0xfffe; addr >= 0xff00; addr--) {
+  for (unsigned short addr = 0xfffe; addr >= 0xffc0; addr--) {
     printf("0x%02x: %03d (0x%02d)\n", addr, gb->memory[addr], gb->memory[addr]);
   }
 }
