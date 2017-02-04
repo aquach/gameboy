@@ -13,20 +13,19 @@ banks 2
 
 .orga $0100
 
-ld a, $0
-ldh ($6), a
+halt
+ld a, 0
+call delay_a_20_cycles
+stop
 
-ld a, $4
-ldh ($7), a
-
-ld a, $4
-ldh ($ff), a
-
-ei
-nop
-
-call loop
-
-loop:
-	jp loop
+delay_a_20_cycles:
+-    sub  5    ; 2
+		 jr   nc,- ;3/2 do multiples of 5
+		 rra       ; 1
+		 jr   nc,+ ;3/2 bit 0
++    adc  1    ; 2
+		 ret  nc   ;5/2 -1: 0 cycles
+		 ret  z    ;5/2  0: 2 cycles
+		 nop       ; 1   1: 4 cycles
+		 ret       ; 4 (thanks to dclxvi for original algorithm)
 

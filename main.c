@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DEBUG 0
+char DEBUG = 0;
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -205,6 +205,7 @@ void gameboy_initialize(Gameboy* gb) {
   gb->set_ime_after_n_instructions = -1;
   gb->unset_ime_after_n_instructions = -1;
 
+  gb->global_simulated_ticks = 0;
   gb->ticks_to_next_instruction = 0;
 }
 
@@ -535,6 +536,17 @@ void gameboy_print_instruction(Gameboy* gb) {
 }
 
 void gameboy_dump_registers(Gameboy* gb) {
+  /* printf( */
+  /*   "%d%d%d%d%d%d%d%d\n", */
+  /*   BIT(gb->A, 7), */
+  /*   BIT(gb->A, 6), */
+  /*   BIT(gb->A, 5), */
+  /*   BIT(gb->A, 4), */
+  /*   BIT(gb->A, 3), */
+  /*   BIT(gb->A, 2), */
+  /*   BIT(gb->A, 1), */
+  /*   BIT(gb->A, 0) */
+  /* ); */
   printf(
       "A: %03d (0x%02x) \
 B: %03d (0x%02x) \
@@ -578,7 +590,7 @@ PC: %05d (0x%04x)\n",
 
 void gameboy_dump_stack(Gameboy* gb) {
   printf("Stack:\n");
-  for (unsigned short addr = 0xfffe; addr >= 0xffc0; addr--) {
+  for (unsigned short addr = 0xfffe; addr >= 0xfff0; addr--) {
     printf("0x%02x: %03d (0x%02d)\n", addr, gb->memory[addr], gb->memory[addr]);
   }
 }
@@ -733,6 +745,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0x10:
       // STOP 0
+      gameboy_dump_registers(gb);
       assert(false);
       gb->PC++;
       num_cycles = 4;
@@ -957,6 +970,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x27:
       // DAA
       // TODO: WTF is this: http://z80-heaven.wikidot.com/instructions-set:daa
+      // TODO: probably broken.
       {
         unsigned char low_nibble = gb->A & 0xf;
         if (low_nibble > 9 || CPU_FLAG_H(gb->F)) {
@@ -1347,7 +1361,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0x76:
       // HALT
-      assert(false);
+      DEBUG = 1;
       num_cycles = 4;
       break;
 
@@ -1517,7 +1531,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
               unsigned char borrow;
               unsigned char half_borrow;
               sub_8_bit(gb->A, source, &trash, &borrow, &half_borrow);
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+              gb->F = CPU_F(trash == 0 ? 1 : 0, 0, half_borrow, borrow);
             }
             break;
           default:
@@ -1727,10 +1741,10 @@ int gameboy_execute_instruction(Gameboy* gb) {
       {
         bool jump;
         switch (opcode) {
-          case 0xca:
+          case 0xc2:
             jump = !CPU_FLAG_Z(gb->F);
             break;
-          case 0xc2:
+          case 0xca:
             jump = CPU_FLAG_Z(gb->F);
             break;
           case 0xd2:
@@ -2032,7 +2046,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0xe9:
       // JP (HL)
-      gameboy_read_mem(gb, gb->PC, (unsigned char*)CPU_HL_REF(gb), 2);
+      gb->PC = CPU_HL(gb);
       num_cycles = 4;
       break;
 
@@ -2144,7 +2158,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char borrow;
         unsigned char half_borrow;
         sub_8_bit(gb->A, value, &trash, &borrow, &half_borrow);
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+        gb->F = CPU_F(trash == 0 ? 1 : 0, 0, half_borrow, borrow);
 
         num_cycles = 8;
       }
@@ -2237,7 +2251,7 @@ void gameboy_step_clock(Gameboy* gb) {
 
   int num_cycles = gameboy_execute_instruction(gb);
 
-  gb->ticks_to_next_instruction = num_cycles;
+  gb->ticks_to_next_instruction = num_cycles - 1;
 }
 
 void test_math() {

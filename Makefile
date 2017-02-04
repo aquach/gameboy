@@ -17,6 +17,18 @@ HEADERS = $(wildcard *.h)
 $(TARGET): $(OBJECTS)
 	$(CC) $(OBJECTS) -Wall $(LIBS) -o $@
 
+blargg:
+	cd test-roms/blargg/cpu_instrs/source && make
+
+blargg-test: blargg default
+	./gameboy test-roms/blargg/cpu_instrs/source/out.gb
+
+wla:
+	cd test-roms/wla && make
+
+wla-test: wla default
+	./gameboy test-roms/wla/test.gb
+
 clean:
 	-rm -f *.o
 	-rm -f $(TARGET)
