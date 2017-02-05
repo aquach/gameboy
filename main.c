@@ -4,6 +4,7 @@
 #include <string.h>
 
 char DEBUG = 0;
+unsigned int COUNTDOWN = 0;
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -745,6 +746,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0x10:
       // STOP 0
+      printf("time: %llu\n", gb->global_simulated_ticks);
       gameboy_dump_registers(gb);
       assert(false);
       gb->PC++;
@@ -1155,7 +1157,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char borrow;
         unsigned char half_borrow;
         sub_8_bit(gb->A, 1, &gb->A, &borrow, &half_borrow);
-        gb->F = CPU_F(CPU_FLAG_Z(gb->F), 1, half_borrow, CPU_FLAG_C(gb->F));
+        gb->F = CPU_F(gb->A == 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 4;
       }
       break;
@@ -1362,6 +1364,8 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x76:
       // HALT
       DEBUG = 1;
+      /* if (COUNTDOWN == 0) */
+      /*   COUNTDOWN = 150; */
       num_cycles = 4;
       break;
 
@@ -2329,8 +2333,14 @@ int main(int argc, char **argv) {
   const char* rom_path = argv[1];
   gameboy_load_rom_from_file(&gb, rom_path);
 
-  while (true)
+  while (true) {
     gameboy_step_clock(&gb);
+    if (COUNTDOWN > 1)
+      COUNTDOWN--;
+
+    if (COUNTDOWN == 1)
+      break;
+  }
 
   return 0;
 }
