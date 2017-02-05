@@ -1371,6 +1371,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x2f:
       // CPL
       gb->A = ~gb->A;
+      gb->F = CPU_F(CPU_FLAG_Z(gb->F), 1, 1, CPU_FLAG_C(gb->F));
       num_cycles = 4;
       break;
 
@@ -1403,8 +1404,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
         unsigned char carry;
         unsigned char half_carry;
-        add_16_bit(value, 1, CPU_HL_REF(gb), &carry, &half_carry);
-        gb->F = CPU_F(CPU_HL(gb) == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
+        add_8_bit(value, 1, &value, &carry, &half_carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &value, 1);
+        gb->F = CPU_F(value == 0 ? 1 : 0, 0, half_carry, CPU_FLAG_C(gb->F));
         num_cycles = 12;
       }
       break;
@@ -1853,14 +1855,14 @@ int gameboy_execute_instruction(Gameboy* gb) {
             if (low_nibble < 8) {
               // OR
               gb->A = gb->A | source;
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
             } else {
               // CP
               unsigned char trash;
               unsigned char borrow;
               unsigned char half_borrow;
               sub_8_bit(gb->A, source, &trash, &borrow, &half_borrow);
-              gb->F = CPU_F(trash == 0 ? 1 : 0, 0, half_borrow, borrow);
+              gb->F = CPU_F(trash == 0 ? 1 : 0, 1, half_borrow, borrow);
             }
             break;
           default:
@@ -1956,7 +1958,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         gb->A = gb->A ^ value;
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
         num_cycles = 8;
       }
       break;
@@ -1968,7 +1970,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
 
         gb->A = gb->A | value;
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
         num_cycles = 8;
       }
       break;
@@ -2280,10 +2282,24 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gameboy_read_mem(gb, gb->PC, &source, 1);
         gb->PC++;
 
-        unsigned char carry;
-        unsigned char half_carry;
-        sub_8_bit(gb->A, source, &gb->A, &carry, &half_carry);
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
+        unsigned char borrow;
+        unsigned char half_borrow;
+
+        /* unsigned char value; */
+        /* sub_8_bit(gb->A, source, &value, &borrow, &half_borrow); */
+
+        /* printf( */
+        /*   "0x%02x - 0x%02x = 0x%02x, borrow: %d, half_borrow: %d\n", */
+        /*   gb->A, */
+        /*   source, */
+        /*   value, */
+        /*   borrow, */
+        /*   half_borrow */
+        /* ); */
+
+        sub_8_bit(gb->A, source, &gb->A, &borrow, &half_borrow);
+
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_borrow, borrow);
         num_cycles = 8;
       }
       break;
@@ -2303,15 +2319,20 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gameboy_read_mem(gb, gb->PC, &value, 1);
         gb->PC++;
 
-        unsigned char carry_1;
-        unsigned char half_carry_1;
-        sub_8_bit(gb->A, value, &gb->A, &carry_1, &half_carry_1);
+        unsigned char borrow_1;
+        unsigned char half_borrow_1;
+        sub_8_bit(gb->A, value, &gb->A, &borrow_1, &half_borrow_1);
 
-        unsigned char carry_2;
-        unsigned char half_carry_2;
-        sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
+        unsigned char borrow_2;
+        unsigned char half_borrow_2;
+        sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &borrow_2, &half_borrow_2);
 
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(
+          gb->A == 0 ? 1 : 0,
+          1,
+          half_borrow_1 || half_borrow_2 ? 1 : 0,
+          borrow_1 || borrow_2 ? 1 : 0
+        );
         num_cycles = 8;
       }
       break;
@@ -2368,7 +2389,13 @@ int gameboy_execute_instruction(Gameboy* gb) {
           unsigned char half_borrow;
           sub_8_bit(gb->SP & 0xff, (unsigned char)-offset, &trash, &borrow, &half_borrow);
           gb->F = CPU_F(0, 0, half_borrow, borrow);
-          printf("SP: 0x%04x, borrow: %d, half_borrow: %d\n", gb->SP, borrow, half_borrow);
+          /* printf( */
+          /*   "SP: 0x%04x, offset: %d, borrow: %d, half_borrow: %d\n", */
+          /*   gb->SP, */
+          /*   (unsigned char)-offset, */
+          /*   borrow, */
+          /*   half_borrow */
+          /* ); */
         }
 
         gb->SP += offset;
@@ -2402,7 +2429,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gb->PC++;
 
         gb->A = gb->A ^ value;
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
         num_cycles = 8;
       }
       break;
@@ -2440,7 +2467,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gb->PC++;
 
         gb->A = gb->A | value;
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 1, 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, 0);
         num_cycles = 8;
       }
       break;
@@ -2508,7 +2535,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char borrow;
         unsigned char half_borrow;
         sub_8_bit(gb->A, value, &trash, &borrow, &half_borrow);
-        gb->F = CPU_F(trash == 0 ? 1 : 0, 0, half_borrow, borrow);
+        gb->F = CPU_F(trash == 0 ? 1 : 0, 1, half_borrow, borrow);
 
         num_cycles = 8;
       }
