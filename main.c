@@ -140,8 +140,6 @@ void add_16_bit(
   *half_carry = (((unsigned int)a & 0xfff) + ((unsigned int)b & 0xfff)) >> 12;
 }
 
-// TODO: H/C flag may be "no borrow" instead of "did borrow".
-
 void sub_16_bit(
   unsigned short a,
   unsigned short b,
@@ -160,6 +158,55 @@ void sub_16_bit(
     *borrow = !carry;
     *half_borrow = !half_carry;
   }
+}
+
+unsigned char rlc(unsigned char value, unsigned char* output_carry) {
+  // Rotate left, storing 7 in C.
+  *output_carry = BIT(value, 7);
+  return (value << 1) | *output_carry;
+}
+
+unsigned char rl(unsigned char value, unsigned char input_carry, unsigned char* output_carry) {
+  // Rotate left as if C were bit 8.
+  *output_carry = BIT(value, 7);
+  return (value << 1) | input_carry;
+}
+
+unsigned char rrc(unsigned char value, unsigned char* output_carry) {
+  // Rotate right, storing value of old bit 0 in C.
+  *output_carry = BIT(value, 0);
+  return (value >> 1) | (*output_carry << 7);
+}
+
+unsigned char rr(unsigned char value, unsigned char input_carry, unsigned char* output_carry) {
+  // Rotate right as if C were bit -1.
+  *output_carry = BIT(value, 0);
+  return (value >> 1) | (input_carry << 7);
+}
+
+unsigned char sla(unsigned char value, unsigned char* output_carry) {
+  // Shift left, storing 0 in bit 0 and bit 7 in C.
+  *output_carry = BIT(value, 7);
+  return value << 1;
+}
+
+unsigned char sra(unsigned char value, unsigned char* output_carry) {
+  // Shift right, storing value of bit 7 into new bit 7 and bit 0 in C.
+  *output_carry = BIT(value, 0);
+  return (value >> 1) | (BIT(value, 7) << 7);
+}
+
+unsigned char srl(unsigned char value, unsigned char* output_carry) {
+  // Shift right, storing 0 in bit 7 and bit 0 in C.
+  *output_carry = BIT(value, 0);
+  return value >> 1;
+}
+
+unsigned char swap(unsigned char value) {
+  // Swaps upper and lower nibble.
+  unsigned char upper = value >> 4;
+  unsigned char lower = lower & 0xf;
+  return (lower << 4) | upper;
 }
 
 void gameboy_initialize(Gameboy* gb) {
@@ -596,6 +643,284 @@ void gameboy_dump_stack(Gameboy* gb) {
   }
 }
 
+void gameboy_execute_cb_instruction(Gameboy* gb, int* num_cycles) {
+  // PC is already pointing at the byte after the CB.
+
+  unsigned char opcode;
+  gameboy_read_mem(gb, gb->PC, &opcode, 1);
+  gb->PC++;
+
+  unsigned char hl_value;
+
+  bool handled_by_hl = true;
+
+  switch (opcode) {
+    case 0x06:
+      // RLC (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = rlc(hl_value, &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x0e:
+      // RRC (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = rrc(hl_value, &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x16:
+      // RL (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = rl(hl_value, CPU_FLAG_C(gb->F), &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x1e:
+      // RR (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = rr(hl_value, CPU_FLAG_C(gb->F), &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x26:
+      // SLA (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = sla(hl_value, &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x2e:
+      // SRA (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = sra(hl_value, &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+    case 0x36:
+      // SWAP (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        hl_value = swap(hl_value);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, 0);
+      }
+      break;
+    case 0x3e:
+      // SRL (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char carry;
+        hl_value = srl(hl_value, &carry);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+        gb->F = CPU_F(hl_value == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+
+    case 0x46:
+    case 0x4e:
+    case 0x56:
+    case 0x5e:
+    case 0x66:
+    case 0x6e:
+    case 0x76:
+    case 0x7e:
+      // BIT b, (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char target_bit = ((opcode >> 4) - 4) * 2 + (opcode & 0xf) / 8;
+        gb->F = CPU_F(BIT(hl_value, target_bit) == 0 ? 1 : 0, 0, 1, CPU_FLAG_C(gb->F));
+      }
+      break;
+
+    case 0x86:
+    case 0x8e:
+    case 0x96:
+    case 0x9e:
+    case 0xa6:
+    case 0xae:
+    case 0xb6:
+    case 0xbe:
+      // RES b, (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char target_bit = ((opcode >> 4) - 8) * 2 + (opcode & 0xf) / 8;
+        hl_value = UNSET_BIT(hl_value, target_bit);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+      }
+      break;
+
+    case 0xc6:
+    case 0xce:
+    case 0xd6:
+    case 0xde:
+    case 0xe6:
+    case 0xee:
+    case 0xf6:
+    case 0xfe:
+      // SET b, (HL)
+      {
+        gameboy_read_mem(gb, CPU_HL(gb), &hl_value, 1);
+        unsigned char target_bit = ((opcode >> 4) - 0xc) * 2 + (opcode & 0xf) / 8;
+        hl_value = SET_BIT(hl_value, target_bit);
+        gameboy_write_mem(gb, CPU_HL(gb), &hl_value, 1);
+      }
+      break;
+
+    default:
+      handled_by_hl = false;
+  }
+
+  if (handled_by_hl) {
+    *num_cycles = 16;
+    return;
+  }
+
+  unsigned char low_nibble = opcode & 0xf;
+
+  unsigned char* reg;
+  switch (low_nibble % 8) {
+    case 0:
+      reg = &gb->B;
+      break;
+    case 1:
+      reg = &gb->C;
+      break;
+    case 2:
+      reg = &gb->D;
+      break;
+    case 3:
+      reg = &gb->E;
+      break;
+    case 4:
+      reg = &gb->H;
+      break;
+    case 5:
+      reg = &gb->L;
+      break;
+    case 7:
+      reg = &gb->A;
+      break;
+    default:
+      assert(false);
+  }
+
+  unsigned char high_nibble = opcode >> 4;
+
+  switch (high_nibble) {
+    case 0:
+      if (low_nibble < 8) {
+        // RLC
+        unsigned char carry;
+        *reg = rlc(*reg, &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      } else {
+        // RRC
+        unsigned char carry;
+        *reg = rrc(*reg, &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+
+    case 1:
+      if (low_nibble < 8) {
+        // RL
+        unsigned char carry;
+        *reg = rl(*reg, CPU_FLAG_C(gb->F), &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      } else {
+        // RR
+        unsigned char carry;
+        *reg = rr(*reg, CPU_FLAG_C(gb->F), &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+
+    case 2:
+      if (low_nibble < 8) {
+        // SLA
+        unsigned char carry;
+        *reg = sla(*reg, &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      } else {
+        // SRA
+        unsigned char carry;
+        *reg = sra(*reg, &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+
+    case 3:
+      if (low_nibble < 8) {
+        // SWAP
+        *reg = swap(*reg);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, 0);
+      } else {
+        // SRL
+        unsigned char carry;
+        *reg = srl(*reg, &carry);
+        gb->F = CPU_F(*reg == 0 ? 1 : 0, 0, 0, carry);
+      }
+      break;
+
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+      {
+        // BIT
+        unsigned char target_bit = (high_nibble - 4) * 2 + low_nibble / 8;
+        gb->F = CPU_F(BIT(*reg, target_bit) == 0 ? 1 : 0, 0, 1, CPU_FLAG_C(gb->F));
+      }
+      break;
+
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+      {
+        // RES
+        unsigned char target_bit = (high_nibble - 8) * 2 + low_nibble / 8;
+        *reg = UNSET_BIT(*reg, target_bit);
+      }
+      break;
+
+    case 12:
+    case 13:
+    case 14:
+    case 15:
+      {
+        // SET
+        unsigned char target_bit = (high_nibble - 12) * 2 + low_nibble / 8;
+        *reg = SET_BIT(*reg, target_bit);
+      }
+      break;
+
+    default:
+      assert(false);
+  }
+
+  *num_cycles = 8;
+}
+
 int gameboy_execute_instruction(Gameboy* gb) {
   if (DEBUG) {
     printf("Executing: ");
@@ -664,9 +989,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x07:
       // RLCA
       {
-        unsigned char bit = BIT(gb->A, 7);
-        gb->A = (gb->A << 1) | bit;
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, 0, bit);
+        unsigned char carry;
+        gb->A = rlc(gb->A, &carry);
+        gb->F = CPU_F(0, 0, 0, carry); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
         num_cycles = 4;
       }
       break;
@@ -737,9 +1062,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x0f:
       // RRCA
       {
-        unsigned char bit = BIT(gb->A, 0);
-        gb->A = (gb->A >> 1) | (bit << 7);
-        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
+        unsigned char carry;
+        gb->A = rrc(gb->A, &carry);
+        gb->F = CPU_F(0, 0, 0, carry); // TODO: Z flag is a matter of debate. Could be 0, 1, or Z.
         num_cycles = 4;
       }
       break;
@@ -804,9 +1129,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x17:
       // RLA
       {
-        unsigned char bit = BIT(gb->A, 7);
-        gb->A = (gb->A << 1) | CPU_FLAG_C(gb->F);
-        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z is up for debate.
+        unsigned char carry;
+        gb->A = rl(gb->A, CPU_FLAG_C(gb->F), &carry);
+        gb->F = CPU_F(0, 0, 0, carry); // TODO: Z flag is up for debate.
         num_cycles = 4;
       }
       break;
@@ -877,9 +1202,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
     case 0x1f:
       // RRA
       {
-        unsigned char bit = BIT(gb->A, 0);
-        gb->A = (gb->A >> 1) | (CPU_FLAG_C(gb->F) << 7);
-        gb->F = CPU_F(0, 0, 0, bit); // TODO: Z flag is up for debate.
+        unsigned char carry;
+        gb->A = rr(gb->A, CPU_FLAG_C(gb->F), &carry);
+        gb->F = CPU_F(0, 0, 0, carry); // TODO: Z flag is up for debate.
         num_cycles = 4;
       }
       break;
@@ -1925,9 +2250,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0xcb:
       // PREFIX CB
-      /* assert(false); */
-      gb->PC++;
-      num_cycles = 4;
+      gameboy_execute_cb_instruction(gb, &num_cycles);
       break;
 
     case 0xce:
@@ -2032,17 +2355,22 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
         gb->PC++;
 
+        unsigned char trash;
+
+        // Set 8-bit half-carry/borrow and carry/borrow.
         if (offset >= 0) {
           unsigned char carry;
           unsigned char half_carry;
-          add_16_bit(gb->SP, (unsigned char)offset, &gb->SP, &carry, &half_carry);
+          add_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
           gb->F = CPU_F(0, 0, half_carry, carry);
         } else {
           unsigned char borrow;
           unsigned char half_borrow;
-          sub_16_bit(gb->SP, (unsigned char)-offset, &gb->SP, &borrow, &half_borrow);
+          sub_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &borrow, &half_borrow);
           gb->F = CPU_F(0, 0, half_borrow, borrow);
         }
+
+        gb->SP += offset;
 
         num_cycles = 16;
       }
@@ -2122,7 +2450,24 @@ int gameboy_execute_instruction(Gameboy* gb) {
         char offset;
         gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
         gb->PC++;
+
+        unsigned char trash;
+
+        // Set 8-bit half-carry/borrow and carry/borrow.
+        if (offset >= 0) {
+          unsigned char carry;
+          unsigned char half_carry;
+          add_8_bit(CPU_HL(gb) & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
+          gb->F = CPU_F(0, 0, half_carry, carry);
+        } else {
+          unsigned char borrow;
+          unsigned char half_borrow;
+          sub_8_bit(CPU_HL(gb) & 0xff, (unsigned char)offset, &trash, &borrow, &half_borrow);
+          gb->F = CPU_F(0, 0, half_borrow, borrow);
+        }
+
         *CPU_HL_REF(gb) = gb->SP + offset;
+
         num_cycles = 12;
       }
       break;
@@ -2318,6 +2663,7 @@ void test_math() {
 void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
   printf("Loading ROM from path: %s\n", rom_path);
   FILE* fp = fopen(rom_path, "r");
+  assert(fp != NULL);
   fread(gb->memory, 0x8000, 1, fp);
 }
 
