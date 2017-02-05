@@ -1798,7 +1798,12 @@ int gameboy_execute_instruction(Gameboy* gb) {
               unsigned char half_carry_2;
               add_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+              gb->F = CPU_F(
+                gb->A == 0 ? 1 : 0,
+                0,
+                half_carry_1 || half_carry_2 ? 1 : 0,
+                carry_1 || carry_2 ? 1 : 0
+              );
             }
             break;
 
@@ -1819,7 +1824,12 @@ int gameboy_execute_instruction(Gameboy* gb) {
               unsigned char half_borrow_2;
               sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &borrow_2, &half_borrow_2);
 
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
+              gb->F = CPU_F(
+                gb->A == 0 ? 1 : 0,
+                1,
+                half_borrow_1 || half_borrow_2 ? 1 : 0,
+                borrow_1 || borrow_2 ? 1 : 0
+              );
             }
             break;
 
@@ -2315,7 +2325,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char addr;
         gameboy_read_mem(gb, gb->PC, &addr, 1);
         gb->PC++;
-        unsigned short offset_addr = (unsigned short)addr + 0xff00;
+        unsigned short offset_addr = addr + 0xff00;
         gameboy_write_mem(gb, offset_addr, &gb->A, 1);
         num_cycles = 12;
       }
@@ -2349,26 +2359,10 @@ int gameboy_execute_instruction(Gameboy* gb) {
         gb->PC++;
 
         unsigned char trash;
-
-        // Set 8-bit half-carry/borrow and carry/borrow.
-        if (offset >= 0) {
-          unsigned char carry;
-          unsigned char half_carry;
-          add_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
-          gb->F = CPU_F(0, 0, half_carry, carry);
-        } else {
-          unsigned char borrow;
-          unsigned char half_borrow;
-          sub_8_bit(gb->SP & 0xff, (unsigned char)-offset, &trash, &borrow, &half_borrow);
-          gb->F = CPU_F(0, 0, half_borrow, borrow);
-          /* printf( */
-          /*   "SP: 0x%04x, offset: %d, borrow: %d, half_borrow: %d\n", */
-          /*   gb->SP, */
-          /*   (unsigned char)-offset, */
-          /*   borrow, */
-          /*   half_borrow */
-          /* ); */
-        }
+        unsigned char carry;
+        unsigned char half_carry;
+        add_8_bit(gb->SP & 0xff, offset, &trash, &carry, &half_carry);
+        gb->F = CPU_F(0, 0, half_carry, carry);
 
         gb->SP += offset;
 
@@ -2449,22 +2443,16 @@ int gameboy_execute_instruction(Gameboy* gb) {
       {
         char offset;
         gameboy_read_mem(gb, gb->PC, (unsigned char*)&offset, 1);
+
         gb->PC++;
 
         unsigned char trash;
 
         // Set 8-bit half-carry/borrow and carry/borrow.
-        if (offset >= 0) {
-          unsigned char carry;
-          unsigned char half_carry;
-          add_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
-          gb->F = CPU_F(0, 0, half_carry, carry);
-        } else {
-          unsigned char borrow;
-          unsigned char half_borrow;
-          sub_8_bit(gb->SP & 0xff, (unsigned char)-offset, &trash, &borrow, &half_borrow);
-          gb->F = CPU_F(0, 0, half_borrow, borrow);
-        }
+        unsigned char carry;
+        unsigned char half_carry;
+        add_8_bit(gb->SP & 0xff, offset, &trash, &carry, &half_carry);
+        gb->F = CPU_F(0, 0, half_carry, carry);
 
         *CPU_HL_REF(gb) = gb->SP + offset;
 
@@ -2601,37 +2589,6 @@ void gameboy_step_clock(Gameboy* gb) {
   int num_cycles = gameboy_execute_instruction(gb);
 
   gb->ticks_to_next_instruction = num_cycles - 1;
-}
-
-void test_math() {
-  unsigned char borrow;
-  unsigned char half_borrow;
-  unsigned char result;
-
-  unsigned char subs[8][2] = {
-    { 3, 1 },
-    { 16, 3 },
-    { 1, 3 },
-    { 18, 34 },
-    { 18, 18 },
-    { 18, 19 },
-    { 245, 246 },
-    { 246, 240 }
-  };
-
-  for (int i = 0; i < 8; i++) {
-    unsigned char a = subs[i][0];
-    unsigned char b = subs[i][1];
-    sub_8_bit(a, b, &result, &borrow, &half_borrow);
-    printf(
-        "0x%02x - 0x%02x = 0x%02x, borrow: %d, half_borrow: %d\n",
-        a,
-        b,
-        result,
-        borrow,
-        half_borrow
-        );
-  }
 }
 
 void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
