@@ -4,7 +4,7 @@
 #include <string.h>
 
 char DEBUG = 0;
-unsigned int COUNTDOWN = 0;
+unsigned long long COUNTDOWN = 200000000;
 
 typedef struct {
   unsigned char memory[64 * 1024];
@@ -205,7 +205,7 @@ unsigned char srl(unsigned char value, unsigned char* output_carry) {
 unsigned char swap(unsigned char value) {
   // Swaps upper and lower nibble.
   unsigned char upper = value >> 4;
-  unsigned char lower = lower & 0xf;
+  unsigned char lower = value & 0xf;
   return (lower << 4) | upper;
 }
 
@@ -2366,8 +2366,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
         } else {
           unsigned char borrow;
           unsigned char half_borrow;
-          sub_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &borrow, &half_borrow);
+          sub_8_bit(gb->SP & 0xff, (unsigned char)-offset, &trash, &borrow, &half_borrow);
           gb->F = CPU_F(0, 0, half_borrow, borrow);
+          printf("SP: 0x%04x, borrow: %d, half_borrow: %d\n", gb->SP, borrow, half_borrow);
         }
 
         gb->SP += offset;
@@ -2457,12 +2458,12 @@ int gameboy_execute_instruction(Gameboy* gb) {
         if (offset >= 0) {
           unsigned char carry;
           unsigned char half_carry;
-          add_8_bit(CPU_HL(gb) & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
+          add_8_bit(gb->SP & 0xff, (unsigned char)offset, &trash, &carry, &half_carry);
           gb->F = CPU_F(0, 0, half_carry, carry);
         } else {
           unsigned char borrow;
           unsigned char half_borrow;
-          sub_8_bit(CPU_HL(gb) & 0xff, (unsigned char)offset, &trash, &borrow, &half_borrow);
+          sub_8_bit(gb->SP & 0xff, (unsigned char)-offset, &trash, &borrow, &half_borrow);
           gb->F = CPU_F(0, 0, half_borrow, borrow);
         }
 
