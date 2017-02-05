@@ -112,19 +112,10 @@ void sub_8_bit(
   unsigned char* borrow,
   unsigned char* half_borrow
 ) {
-  unsigned char carry;
-  unsigned char half_carry;
-  if (b == 0) {
-    *result = a;
-    *borrow = false;
-    *half_borrow = false;
-  } else {
-    add_8_bit(a, 256 - b, result, &carry, &half_carry);
-    // 3 - 1 => 3 + 255 => carry flag set, which means borrow flag not set.
-    // 3 - 4 => 3 + 252 => carry flag not set, which means borrow flag set.
-    *borrow = !carry;
-    *half_borrow = !half_carry;
-  }
+  unsigned short full_sub = (unsigned short)a - (unsigned short)b;
+  *result = full_sub & 0xff;
+  *borrow = a < b;
+  *half_borrow = (((unsigned short)a & 0xf) < ((unsigned short)b & 0xf));
 }
 
 void add_16_bit(
@@ -147,17 +138,10 @@ void sub_16_bit(
   unsigned char* borrow,
   unsigned char* half_borrow
 ) {
-  unsigned char carry;
-  unsigned char half_carry;
-  if (b == 0) {
-    *result = a;
-    *borrow = false;
-    *half_borrow = false;
-  } else {
-    add_16_bit(a, 65536 - b, result, &carry, &half_carry);
-    *borrow = !carry;
-    *half_borrow = !half_carry;
-  }
+  unsigned short full_sub = (unsigned int)a - (unsigned int)b;
+  *result = full_sub & 0xffff;
+  *borrow = a < b;
+  *half_borrow = (((unsigned int)a >> 8) & 0xf) < (((unsigned int)b >> 8) & 0xf);
 }
 
 unsigned char rlc(unsigned char value, unsigned char* output_carry) {
@@ -1400,7 +1384,6 @@ int gameboy_execute_instruction(Gameboy* gb) {
       {
         unsigned char value;
         gameboy_read_mem(gb, CPU_HL(gb), &value, 1);
-        gb->PC++;
 
         unsigned char carry;
         unsigned char half_carry;
@@ -1419,8 +1402,9 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
         unsigned char borrow;
         unsigned char half_borrow;
-        sub_16_bit(value, 1, CPU_HL_REF(gb), &borrow, &half_borrow);
-        gb->F = CPU_F(CPU_HL(gb) == 0 ? 1 : 0, 0, half_borrow, CPU_FLAG_C(gb->F));
+        sub_8_bit(value, 1, &value, &borrow, &half_borrow);
+        gameboy_write_mem(gb, CPU_HL(gb), &value, 1);
+        gb->F = CPU_F(value == 0 ? 1 : 0, 1, half_borrow, CPU_FLAG_C(gb->F));
         num_cycles = 12;
       }
       break;
@@ -1824,7 +1808,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
               unsigned char borrow;
               unsigned char half_borrow;
               sub_8_bit(gb->A, source, &gb->A, &borrow, &half_borrow);
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow, borrow);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_borrow, borrow);
             } else {
               // SBC
               unsigned char borrow_1;
@@ -1835,7 +1819,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
               unsigned char half_borrow_2;
               sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &borrow_2, &half_borrow_2);
 
-              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
+              gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_borrow_1 || half_borrow_2 ? 1 : 0, borrow_1 || borrow_2 ? 1 : 0);
             }
             break;
 
@@ -1915,7 +1899,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char carry;
         unsigned char half_carry;
         sub_8_bit(gb->A, value, &gb->A, &carry, &half_carry);
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry, carry);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_carry, carry);
         num_cycles = 8;
       }
       break;
@@ -1934,7 +1918,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char half_carry_2;
         sub_8_bit(gb->A, CPU_FLAG_C(gb->F), &gb->A, &carry_2, &half_carry_2);
 
-        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 0, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
+        gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_carry_1 || half_carry_2 ? 1 : 0, carry_1 || carry_2 ? 1 : 0);
         num_cycles = 8;
       }
       break;
@@ -1985,6 +1969,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
         unsigned char borrow;
         unsigned char half_borrow;
         sub_8_bit(gb->A, value, &trash, &borrow, &half_borrow);
+        gb->F = CPU_F(trash == 0 ? 1 : 0, 1, half_borrow, borrow);
 
         num_cycles = 8;
       }
@@ -2284,19 +2269,6 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
         unsigned char borrow;
         unsigned char half_borrow;
-
-        /* unsigned char value; */
-        /* sub_8_bit(gb->A, source, &value, &borrow, &half_borrow); */
-
-        /* printf( */
-        /*   "0x%02x - 0x%02x = 0x%02x, borrow: %d, half_borrow: %d\n", */
-        /*   gb->A, */
-        /*   source, */
-        /*   value, */
-        /*   borrow, */
-        /*   half_borrow */
-        /* ); */
-
         sub_8_bit(gb->A, source, &gb->A, &borrow, &half_borrow);
 
         gb->F = CPU_F(gb->A == 0 ? 1 : 0, 1, half_borrow, borrow);
@@ -2632,59 +2604,33 @@ void gameboy_step_clock(Gameboy* gb) {
 }
 
 void test_math() {
-  unsigned char carry;
-  unsigned char half_carry;
   unsigned char borrow;
   unsigned char half_borrow;
+  unsigned char result;
 
-  {
-    unsigned char result;
+  unsigned char subs[8][2] = {
+    { 3, 1 },
+    { 16, 3 },
+    { 1, 3 },
+    { 18, 34 },
+    { 18, 18 },
+    { 18, 19 },
+    { 245, 246 },
+    { 246, 240 }
+  };
 
-    printf("8 bit add:\n");
-
-    add_8_bit(1, 3, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_8_bit(15, 15, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_8_bit(255, 3, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_8_bit(240, 17, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    printf("8 bit sub:\n");
-
-    sub_8_bit(3, 1, &result, &borrow, &half_borrow);
-    printf("result: %d, borrow: %d, half_borrow: %d\n", result, borrow, half_borrow);
-
-    sub_8_bit(16, 3, &result, &borrow, &half_borrow);
-    printf("result: %d, borrow: %d, half_borrow: %d\n", result, borrow, half_borrow);
-
-    sub_8_bit(1, 3, &result, &borrow, &half_borrow);
-    printf("result: %d, borrow: %d, half_borrow: %d\n", result, borrow, half_borrow);
-
-    sub_8_bit(18, 34, &result, &borrow, &half_borrow);
-    printf("result: %d, borrow: %d, half_borrow: %d\n", result, borrow, half_borrow);
-  }
-
-  {
-    unsigned short result;
-
-    printf("16 bit add:\n");
-
-    add_16_bit(240, 17, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_16_bit(4095, 5, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_16_bit(65000, 600, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
-
-    add_16_bit(62000, 4096, &result, &carry, &half_carry);
-    printf("result: %d, carry: %d, half_carry: %d\n", result, carry, half_carry);
+  for (int i = 0; i < 8; i++) {
+    unsigned char a = subs[i][0];
+    unsigned char b = subs[i][1];
+    sub_8_bit(a, b, &result, &borrow, &half_borrow);
+    printf(
+        "0x%02x - 0x%02x = 0x%02x, borrow: %d, half_borrow: %d\n",
+        a,
+        b,
+        result,
+        borrow,
+        half_borrow
+        );
   }
 }
 
