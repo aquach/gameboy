@@ -1280,23 +1280,41 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0x27:
       // DAA
-      // TODO: WTF is this: http://z80-heaven.wikidot.com/instructions-set:daa
-      // TODO: probably broken.
       {
-        unsigned char low_nibble = gb->A & 0xf;
-        if (low_nibble > 9 || CPU_FLAG_H(gb->F)) {
-          gb->A += 6;
+        unsigned short a = gb->A;
+
+        if (CPU_FLAG_N(gb->F)) {
+          if (CPU_FLAG_H(gb->F)) {
+            a -= 6;
+            a &= 0xff;
+          }
+
+          if (CPU_FLAG_C(gb->F)) {
+            a -= 0x60;
+          }
+        } else {
+          unsigned char low_nibble = a & 0xf;
+          if (low_nibble > 9 || CPU_FLAG_H(gb->F)) {
+            a += 6;
+          }
+
+          unsigned char high_nibble = a >> 4;
+          if (high_nibble > 9 || CPU_FLAG_C(gb->F)) {
+            a += 0x60;
+          }
         }
 
-        unsigned char high_nibble = gb->A >> 4;
-        bool do_second_addition = high_nibble > 9 || CPU_FLAG_C(gb->F);
-        if (do_second_addition) {
-          gb->A += 0x60;
-        }
+        gb->A = a & 0xff;
+        gb->F = CPU_F(
+          gb->A == 0 ? 1 : 0,
+          CPU_FLAG_N(gb->F),
+          0,
+          (CPU_FLAG_C(gb->F) || a >> 8) ? 1 : 0
+        );
 
-        gb->F = CPU_F(gb->A == 0, CPU_FLAG_N(gb->F), 0, do_second_addition ? 1 : 0);
         num_cycles = 4;
       }
+
       break;
 
     case 0x29:
