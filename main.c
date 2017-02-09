@@ -98,6 +98,7 @@ int compare_priority(const void* a, const void* b) {
 
 void gameboy_draw_scanline(Gameboy* gb) {
   unsigned int scanline_rgb[GB_SCREEN_WIDTH];
+  memset(scanline_rgb, 0xff, GB_SCREEN_WIDTH * 4);
 
   int LY = gb->memory[REG_LY];
 
@@ -107,12 +108,10 @@ void gameboy_draw_scanline(Gameboy* gb) {
     if (BIT(gb->memory[REG_LCDC], 5)) {
       // Draw window.
     }
-  } else {
-    // Background and window are white.
-    memset(scanline_rgb, 0xffffffff, GB_SCREEN_WIDTH * 4);
   }
 
   if (BIT(gb->memory[REG_LCDC], 1)) {
+    assert(false);
     // Draw sprites.
 
     bool large_sprites = BIT(gb->memory[REG_LCDC], 2);
@@ -150,6 +149,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
       int bottom_y = sprite->y;
       int top_y = sprite->y + large_sprites ? 16 : 8;
       int src_y = VIDEO_OAM_Y_FLIP(sprite->attributes) ? bottom_y - LY : LY - top_y;
+
       assert(src_y >= 0);
       if (large_sprites)
         assert(src_y <= 15);
