@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern char DEBUG;
@@ -60,6 +61,7 @@ typedef struct {
 #define REG_NR51 (0xFF25)
 #define REG_NR52 (0xFF26)
 #define REG_LCDC (0xFF40)
+#define REG_STAT (0xFF41)
 #define REG_SCY (0xFF42)
 #define REG_SCX (0xFF43)
 #define REG_LY (0xFF44)
@@ -97,3 +99,23 @@ int gameboy_execute_instruction(Gameboy* gb);
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len);
 void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len);
+
+#define GB_SCREEN_WIDTH (160)
+#define GB_SCREEN_HEIGHT (144)
+
+typedef struct {
+  unsigned char y;
+  unsigned char x;
+  unsigned char tile;
+  unsigned char attributes;
+} sprite;
+
+#define VIDEO_OAM_OBJ_PRIORITY(f) BIT((f), 7)
+#define VIDEO_OAM_Y_FLIP(f) BIT((f), 6)
+#define VIDEO_OAM_X_FLIP(f) BIT((f), 5)
+#define VIDEO_OAM_PALETTE_NUMBER(f) BIT((f), 4)
+
+#define VIDEO_OAM_NUM_SPRITES (40)
+
+#define VIDEO_TILE_0(gb, t) (gb->memory[0x8000 + (t) * 16])
+#define VIDEO_TILE_1(gb, t) (gb->memory[0x8800 + ((unsigned char)t + 128) * 16])

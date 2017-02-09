@@ -11,38 +11,25 @@ void gameboy_initialize(Gameboy* gb) {
   *CPU_HL_REF(gb) = 0x014D;
   gb->SP = 0xFFFE;
   gb->PC = 0x0100;
-  gb->memory[REG_TIMA] = 0x00;
-  gb->memory[REG_TMA] = 0x00;
-  gb->memory[REG_TAC] = 0x00;
   gb->memory[REG_NR10] = 0x80;
   gb->memory[REG_NR11] = 0xBF;
   gb->memory[REG_NR12] = 0xF3;
   gb->memory[REG_NR14] = 0xBF;
   gb->memory[REG_NR21] = 0x3F;
-  gb->memory[REG_NR22] = 0x00;
   gb->memory[REG_NR24] = 0xBF;
   gb->memory[REG_NR30] = 0x7F;
   gb->memory[REG_NR31] = 0xFF;
   gb->memory[REG_NR32] = 0x9F;
   gb->memory[REG_NR33] = 0xBF;
   gb->memory[REG_NR41] = 0xFF;
-  gb->memory[REG_NR42] = 0x00;
-  gb->memory[REG_NR43] = 0x00;
   gb->memory[REG_NR30] = 0xBF;
   gb->memory[REG_NR50] = 0x77;
   gb->memory[REG_NR51] = 0xF3;
   gb->memory[REG_NR52] = 0x0F;
   gb->memory[REG_LCDC] = 0x91;
-  gb->memory[REG_SCY] = 0x00;
-  gb->memory[REG_SCX] = 0x00;
-  gb->memory[REG_LY] = 0x00;
-  gb->memory[REG_LYC] = 0x00;
   gb->memory[REG_BGP] = 0xFC;
   gb->memory[REG_OBP0] = 0xFF;
   gb->memory[REG_OBP1] = 0xFF;
-  gb->memory[REG_WY] = 0x00;
-  gb->memory[REG_WX] = 0x00;
-  gb->memory[REG_IE] = 0x00;
 
   gb->IME = 0;
   gb->set_ime_after_n_instructions = -1;
@@ -50,6 +37,147 @@ void gameboy_initialize(Gameboy* gb) {
 
   gb->global_simulated_ticks = 0;
   gb->ticks_to_next_instruction = 0;
+}
+
+void tile_to_colors(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
+  for (int l = 0; l < 8; l++) {
+    for (int c = 0; c < 8; c++) {
+      int color_number = BIT(tile[l], 15 - c) | BIT(tile[l], 7 - c) << 1;
+      assert(color_number >= 0);
+      assert(color_number <= 3);
+
+      int shade = (gb->memory[palette_reg] >> (color_number * 2)) & 0x3;
+
+      int color;
+      switch (shade) {
+        case 0:
+          color = 0xffffffff;
+          break;
+        case 1:
+          color = 0xffaaaaaa;
+          break;
+        case 2:
+          color = 0xff333333;
+          break;
+        case 3:
+          color = 0xff000000;
+          break;
+        default:
+          assert(false);
+      }
+
+      output[l * 8 + c] = color;
+    }
+  }
+}
+
+int compare_priority(const void* a, const void* b) {
+  const sprite* sprite_a = (const sprite*)a;
+  const sprite* sprite_b = (const sprite*)b;
+
+  // First x, then table order.
+  if (sprite_a->x < sprite_b->x) {
+    return -1;
+  }
+
+  if (sprite_a->x > sprite_b->x) {
+    return 1;
+  }
+
+  if (sprite_a < sprite_b) {
+    return -1;
+  }
+
+  if (sprite_a > sprite_b) {
+    return 1;
+  }
+
+  assert(false);
+  return 0;
+}
+
+void gameboy_draw_scanline(Gameboy* gb) {
+  unsigned int scanline_rgb[GB_SCREEN_WIDTH];
+
+  int LY = gb->memory[REG_LY];
+
+  if (BIT(gb->memory[REG_LCDC], 0)) {
+    // Draw background and/or window.
+
+    if (BIT(gb->memory[REG_LCDC], 5)) {
+      // Draw window.
+    }
+  } else {
+    // Background and window are white.
+    memset(scanline_rgb, 0xffffffff, GB_SCREEN_WIDTH * 4);
+  }
+
+  if (BIT(gb->memory[REG_LCDC], 1)) {
+    // Draw sprites.
+
+    bool large_sprites = BIT(gb->memory[REG_LCDC], 2);
+
+    sprite sprites[VIDEO_OAM_NUM_SPRITES];
+    memcpy(sprites, &gb->memory[0xfe00], VIDEO_OAM_NUM_SPRITES * 4);
+    qsort(sprites, VIDEO_OAM_NUM_SPRITES, 4, compare_priority);
+
+    int indices_to_render[10];
+    memset(indices_to_render, -1, 10);
+
+    int num_sprites_on_line = 0;
+
+    for (int i = 0; i < VIDEO_OAM_NUM_SPRITES && num_sprites_on_line < 10; i++) {
+      sprite* sprite = &sprites[i];
+
+      int bottom_y = sprite->y;
+      int top_y = sprite->y + large_sprites ? 16 : 8;
+
+      if (LY >= top_y && LY <= bottom_y) {
+        indices_to_render[num_sprites_on_line] = i;
+        num_sprites_on_line++;
+      }
+    }
+
+    // Render indices backwards so that highest priority gets rendered last, so
+    // it goes on top.
+
+    for (int i = 9; i >= 0; i++) {
+      if (indices_to_render[i] == -1)
+        continue;
+
+      sprite* sprite = &sprites[indices_to_render[i]];
+
+      int bottom_y = sprite->y;
+      int top_y = sprite->y + large_sprites ? 16 : 8;
+      int src_y = VIDEO_OAM_Y_FLIP(sprite->attributes) ? bottom_y - LY : LY - top_y;
+      assert(src_y >= 0);
+      assert(src_y <= 15);
+
+      int tile_no;
+      if (large_sprites) {
+        if (src_y >= 8) {
+          tile_no = sprite->tile | 0x1;
+          src_y -= 8;
+        } else {
+          tile_no = sprite->tile & 0xfe;
+        }
+      } else {
+        tile_no = sprite->tile;
+      }
+
+      int tile_data[8 * 8];
+      tile_to_colors(gb, (short*)&VIDEO_TILE_0(gb, tile_no), tile_data, VIDEO_OAM_PALETTE_NUMBER(sprite->attributes) ? REG_OBP1 : REG_OBP0);
+
+      for (int c = 0; c < 8; c++) {
+        int src_index = src_y * 8 + (VIDEO_OAM_X_FLIP(sprite->attributes) ? 7 - c : c);
+        int dest_x = sprite->x - 8 + c;
+
+        if (dest_x >= 0 && dest_x < GB_SCREEN_WIDTH) {
+          scanline_rgb[dest_x] = tile_data[src_index];
+        }
+      }
+    }
+  }
 }
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
@@ -61,6 +189,8 @@ void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data,
     printf("%c", gb->memory[REG_SB]);
   } else if (address == REG_DIV) {
     gb->memory[REG_DIV] = 0;
+  } else if (address == REG_LY) {
+    gb->memory[REG_LY] = 0;
   } else {
     memcpy(gb->memory + address, data, len);
   }
@@ -95,16 +225,18 @@ void gameboy_step_clock(Gameboy* gb) {
 
   if (gb->global_simulated_ticks % 456 == 0) {
     // Scanline finished.
+    gameboy_draw_scanline(gb);
+
     gb->memory[REG_LY]++;
     if (gb->memory[REG_LY] >= 153) {
       gb->memory[REG_LY] = 0;
     }
 
-    if (gb->memory[REG_LY] == 144) {
+    if (gb->memory[REG_LY] == 144 && BIT(gb->memory[REG_STAT], 4)) {
       // Trigger VBlank.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
-    } else if (gb->memory[REG_LY] == gb->memory[REG_LYC]) {
-      // Trigger stat.
+    } else if (gb->memory[REG_LY] == gb->memory[REG_LYC] && BIT(gb->memory[REG_STAT], 6)) {
+      // Trigger STAT.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
     }
   }
