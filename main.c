@@ -151,7 +151,10 @@ void gameboy_draw_scanline(Gameboy* gb) {
       int top_y = sprite->y + large_sprites ? 16 : 8;
       int src_y = VIDEO_OAM_Y_FLIP(sprite->attributes) ? bottom_y - LY : LY - top_y;
       assert(src_y >= 0);
-      assert(src_y <= 15);
+      if (large_sprites)
+        assert(src_y <= 15);
+      else
+        assert(src_y <= 7);
 
       int tile_no;
       if (large_sprites) {
@@ -165,11 +168,16 @@ void gameboy_draw_scanline(Gameboy* gb) {
         tile_no = sprite->tile;
       }
 
+      assert(tile_no <= 255);
+
       int tile_data[8 * 8];
       tile_to_colors(gb, (short*)&VIDEO_TILE_0(gb, tile_no), tile_data, VIDEO_OAM_PALETTE_NUMBER(sprite->attributes) ? REG_OBP1 : REG_OBP0);
 
       for (int c = 0; c < 8; c++) {
         int src_index = src_y * 8 + (VIDEO_OAM_X_FLIP(sprite->attributes) ? 7 - c : c);
+        assert(src_index >= 0);
+        assert(src_index <= 7);
+
         int dest_x = sprite->x - 8 + c;
 
         if (dest_x >= 0 && dest_x < GB_SCREEN_WIDTH) {
