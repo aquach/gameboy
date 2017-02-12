@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <SDL.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +34,9 @@ typedef struct {
 
   unsigned long long global_simulated_ticks; // In CPU clock ticks.
   int ticks_to_next_instruction;
+
+  SDL_Window* window;
+  SDL_Surface* window_surface;
 } Gameboy;
 
 #define REG_SB (0xFF01)

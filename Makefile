@@ -1,7 +1,8 @@
 TARGET = gameboy
-LIBS = -lm
+LIBS = -lm $(shell sdl2-config --libs)
 CC = gcc
-CFLAGS = -g -Wall -std=c99
+CFLAGS = -g -Wall -std=c99 $(shell sdl2-config --cflags)
+
 
 .PHONY: default all clean
 

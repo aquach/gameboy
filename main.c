@@ -1,7 +1,40 @@
 #include "main.h"
 
 char DEBUG = 0;
-unsigned long long COUNTDOWN = 200000000;
+unsigned long long COUNTDOWN = 30000000;
+
+void sdl_assert(int result) {
+  if (result != 0) {
+    printf("SDL Error: %s\n", SDL_GetError());
+    assert(false);
+  }
+}
+
+void gameboy_initialize_sdl(Gameboy* gb) {
+  if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+    printf("SDL_Init error: %s\n", SDL_GetError());
+    exit(1);
+  }
+
+  SDL_Window* window = SDL_CreateWindow(
+      "Gameboy",
+      100,
+      100,
+      GB_SCREEN_WIDTH,
+      GB_SCREEN_HEIGHT,
+      SDL_WINDOW_SHOWN
+      );
+  if (window == NULL) {
+    printf("SDL_CreateWindow error: %s\n", SDL_GetError());
+    SDL_Quit();
+    exit(1);
+  }
+
+  SDL_Surface* window_surface = SDL_GetWindowSurface(window);
+
+  gb->window = window;
+  gb->window_surface = window_surface;
+}
 
 void gameboy_initialize(Gameboy* gb) {
   memset(gb->memory, 0, 65536);
@@ -37,6 +70,8 @@ void gameboy_initialize(Gameboy* gb) {
 
   gb->global_simulated_ticks = 0;
   gb->ticks_to_next_instruction = 0;
+
+  gameboy_initialize_sdl(gb);
 }
 
 void tile_to_colors(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
@@ -51,16 +86,16 @@ void tile_to_colors(Gameboy* gb, short* tile, int* output, unsigned short palett
       int color;
       switch (shade) {
         case 0:
-          color = 0xffffffff;
+          color = 0x00ffffff;
           break;
         case 1:
-          color = 0xffaaaaaa;
+          color = 0x00aaaaaa;
           break;
         case 2:
-          color = 0xff333333;
+          color = 0x00333333;
           break;
         case 3:
-          color = 0xff000000;
+          color = 0x00000000;
           break;
         default:
           assert(false);
@@ -111,7 +146,6 @@ void gameboy_draw_scanline(Gameboy* gb) {
   }
 
   if (BIT(gb->memory[REG_LCDC], 1)) {
-    assert(false);
     // Draw sprites.
 
     bool large_sprites = BIT(gb->memory[REG_LCDC], 2);
@@ -120,7 +154,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
     memcpy(sprites, &gb->memory[0xfe00], VIDEO_OAM_NUM_SPRITES * 4);
     qsort(sprites, VIDEO_OAM_NUM_SPRITES, 4, compare_priority);
 
-    int indices_to_render[10];
+    unsigned char indices_to_render[10];
     memset(indices_to_render, -1, 10);
 
     int num_sprites_on_line = 0;
@@ -128,10 +162,21 @@ void gameboy_draw_scanline(Gameboy* gb) {
     for (int i = 0; i < VIDEO_OAM_NUM_SPRITES && num_sprites_on_line < 10; i++) {
       sprite* sprite = &sprites[i];
 
-      int bottom_y = sprite->y;
-      int top_y = sprite->y + large_sprites ? 16 : 8;
+      int bottom_y = sprite->y - 1;
+      int top_y = sprite->y - (large_sprites ? 16 : 8);
+
+      /* printf( */
+      /*   "x: %d, y: %d, flip: %d, LY: %d, top_y: %d, bottom_y: %d\n", */
+      /*   sprite->x, */
+      /*   sprite->y, */
+      /*   VIDEO_OAM_Y_FLIP(sprite->attributes), */
+      /*   LY, */
+      /*   top_y, */
+      /*   bottom_y */
+      /* ); */
 
       if (LY >= top_y && LY <= bottom_y) {
+        /* printf("Choosing to render %d\n", i); */
         indices_to_render[num_sprites_on_line] = i;
         num_sprites_on_line++;
       }
@@ -140,15 +185,26 @@ void gameboy_draw_scanline(Gameboy* gb) {
     // Render indices backwards so that highest priority gets rendered last, so
     // it goes on top.
 
-    for (int i = 9; i >= 0; i++) {
-      if (indices_to_render[i] == -1)
+    for (int i = 9; i >= 0; i--) {
+      if (indices_to_render[i] == 255)
         continue;
 
       sprite* sprite = &sprites[indices_to_render[i]];
 
-      int bottom_y = sprite->y;
-      int top_y = sprite->y + large_sprites ? 16 : 8;
+      int bottom_y = sprite->y - 1;
+      int top_y = sprite->y - (large_sprites ? 16 : 8);
       int src_y = VIDEO_OAM_Y_FLIP(sprite->attributes) ? bottom_y - LY : LY - top_y;
+
+      printf(
+        "rendering: index: %d, sorted_sprite_index: %d, x: %d, y: %d, flip: %d, large_sprites: %d, LY: %d\n",
+        i,
+        indices_to_render[i],
+        sprite->x,
+        sprite->y,
+        VIDEO_OAM_Y_FLIP(sprite->attributes),
+        large_sprites,
+        LY
+      );
 
       assert(src_y >= 0);
       if (large_sprites)
@@ -168,6 +224,8 @@ void gameboy_draw_scanline(Gameboy* gb) {
         tile_no = sprite->tile;
       }
 
+      printf("Tile no: %d\n", tile_no);
+
       assert(tile_no <= 255);
 
       int tile_data[8 * 8];
@@ -175,8 +233,9 @@ void gameboy_draw_scanline(Gameboy* gb) {
 
       for (int c = 0; c < 8; c++) {
         int src_index = src_y * 8 + (VIDEO_OAM_X_FLIP(sprite->attributes) ? 7 - c : c);
+        printf("src index: %d\n", src_index);
         assert(src_index >= 0);
-        assert(src_index <= 7);
+        assert(src_index < 64);
 
         int dest_x = sprite->x - 8 + c;
 
@@ -186,6 +245,25 @@ void gameboy_draw_scanline(Gameboy* gb) {
       }
     }
   }
+
+  // Blit scanline.
+  SDL_Surface* scanline_surface = SDL_CreateRGBSurfaceFrom(
+      scanline_rgb,
+      GB_SCREEN_WIDTH,
+      1,
+      32,
+      4 * GB_SCREEN_WIDTH,
+      0x000000ff,
+      0x0000ff00,
+      0x00ff0000,
+      0
+      );
+
+  SDL_Rect dest_rect = { .x = 0, .w = GB_SCREEN_WIDTH, .y = LY, .h = 1 };
+  sdl_assert(SDL_BlitSurface(scanline_surface, NULL, gb->window_surface, &dest_rect));
+  sdl_assert(SDL_UpdateWindowSurface(gb->window));
+
+  SDL_FreeSurface(scanline_surface);
 }
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
@@ -240,7 +318,7 @@ void gameboy_step_clock(Gameboy* gb) {
       gb->memory[REG_LY] = 0;
     }
 
-    if (gb->memory[REG_LY] == 144 && BIT(gb->memory[REG_STAT], 4)) {
+    if (gb->memory[REG_LY] == 144) {// && BIT(gb->memory[REG_STAT], 4)) {
       // Trigger VBlank.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
     } else if (gb->memory[REG_LY] == gb->memory[REG_LYC] && BIT(gb->memory[REG_STAT], 6)) {
@@ -292,6 +370,7 @@ void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
   fread(gb->memory, 0x8000, 1, fp);
 }
 
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     printf("Usage: ./gameboy rom.gb\n");
@@ -304,7 +383,18 @@ int main(int argc, char **argv) {
   const char* rom_path = argv[1];
   gameboy_load_rom_from_file(&gb, rom_path);
 
-  while (true) {
+  bool quit = false;
+
+  while (!quit) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+      switch (event.type) {
+        case SDL_QUIT:
+          quit = true;
+          break;
+      }
+    }
+
     gameboy_step_clock(&gb);
     if (COUNTDOWN > 1)
       COUNTDOWN--;
