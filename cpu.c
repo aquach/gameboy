@@ -752,6 +752,9 @@ void gameboy_execute_cb_instruction(Gameboy* gb, int* num_cycles) {
 }
 
 int gameboy_execute_instruction(Gameboy* gb) {
+  if (gb->halted)
+    return 1;
+
   if (DEBUG) {
     printf("Executing: ");
     gameboy_print_instruction(gb);
@@ -759,7 +762,12 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
   unsigned char opcode;
   gameboy_read_mem(gb, gb->PC, &opcode, 1);
-  gb->PC++;
+
+  if (!gb->halt_di_bug) {
+    gb->PC++;
+  } else {
+    gb->halt_di_bug = false;
+  }
 
   int num_cycles;
   switch (opcode) {
@@ -1538,9 +1546,19 @@ int gameboy_execute_instruction(Gameboy* gb) {
 
     case 0x76:
       // HALT
-      DEBUG = 1;
-      /* if (COUNTDOWN == 0) */
-      /*   COUNTDOWN = 150; */
+      if (gb->IME) {
+        gb->halted = true;
+      } else {
+        unsigned char IE = gb->memory[REG_IE];
+        unsigned char IF = gb->memory[REG_IF];
+        unsigned char triggered_interrupts = IE & IF;
+
+        if (triggered_interrupts) {
+          gb->halt_di_bug = true;
+        } else {
+          gb->halted = true;
+        }
+      }
       num_cycles = 4;
       break;
 
@@ -2154,7 +2172,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
       // RETI
       gameboy_read_mem(gb, gb->SP, (unsigned char*)&gb->PC, 2);
       gb->SP += 2;
-      gb->IME = 1;
+      gb->IME = true;
       num_cycles = 16;
       break;
 
@@ -2372,14 +2390,14 @@ int gameboy_execute_instruction(Gameboy* gb) {
   if (gb->set_ime_after_n_instructions >= 0) {
     gb->set_ime_after_n_instructions--;
     if (gb->set_ime_after_n_instructions < 0) {
-      gb->IME = 1;
+      gb->IME = true;
     }
   }
 
   if (gb->unset_ime_after_n_instructions >= 0) {
     gb->unset_ime_after_n_instructions--;
     if (gb->unset_ime_after_n_instructions < 0) {
-      gb->IME = 0;
+      gb->IME = false;
     }
   }
 

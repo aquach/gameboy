@@ -32,6 +32,9 @@ typedef struct {
   int unset_ime_after_n_instructions;
   bool IME;
 
+  bool halted;
+  bool halt_di_bug;
+
   unsigned long long global_simulated_ticks; // In CPU clock ticks.
   int ticks_to_next_instruction;
 

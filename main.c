@@ -1,7 +1,6 @@
 #include "main.h"
 
 char DEBUG = 0;
-unsigned long long COUNTDOWN = 30000000;
 
 void sdl_assert(int result) {
   if (result != 0) {
@@ -64,12 +63,15 @@ void gameboy_initialize(Gameboy* gb) {
   gb->memory[REG_OBP0] = 0xFF;
   gb->memory[REG_OBP1] = 0xFF;
 
-  gb->IME = 0;
+  gb->IME = false;
   gb->set_ime_after_n_instructions = -1;
   gb->unset_ime_after_n_instructions = -1;
 
   gb->global_simulated_ticks = 0;
   gb->ticks_to_next_instruction = 0;
+
+  gb->halted = false;
+  gb->halt_di_bug = false;
 
   gameboy_initialize_sdl(gb);
 }
@@ -390,13 +392,15 @@ void gameboy_step_clock(Gameboy* gb) {
   }
 
   // Handle interrupts.
-  if (gb->IME) {
-    unsigned char IE = gb->memory[REG_IE];
-    unsigned char IF = gb->memory[REG_IF];
-    unsigned char triggered_interrupts = IE & IF;
+  unsigned char IE = gb->memory[REG_IE];
+  unsigned char IF = gb->memory[REG_IF];
+  unsigned char triggered_interrupts = IE & IF;
 
-    for (int bit = 0; bit <= 4; bit++) {
-      if (BIT(triggered_interrupts, bit)) {
+  for (int bit = 0; bit <= 4; bit++) {
+    if (BIT(triggered_interrupts, bit)) {
+      gb->halted = false;
+
+      if (gb->IME) {
         // Turn off interrupts.
         gb->IME = false;
 
@@ -458,11 +462,6 @@ int main(int argc, char **argv) {
     }
 
     gameboy_step_clock(&gb);
-    if (COUNTDOWN > 1)
-      COUNTDOWN--;
-
-    if (COUNTDOWN == 1)
-      break;
   }
 
   return 0;
