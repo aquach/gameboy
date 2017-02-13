@@ -57,6 +57,9 @@ ld (hl), $30
 ld hl, $fe02
 ld (hl), $0
 
+ld hl, $fe03
+ld (hl), $40
+
 EI
 
 loop:

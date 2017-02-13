@@ -74,7 +74,7 @@ void gameboy_initialize(Gameboy* gb) {
   gameboy_initialize_sdl(gb);
 }
 
-void tile_to_colors(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
+void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
   for (int l = 0; l < 8; l++) {
     for (int c = 0; c < 8; c++) {
       int color_number = BIT(tile[l], 15 - c) | BIT(tile[l], 7 - c) << 1;
@@ -106,16 +106,43 @@ void tile_to_colors(Gameboy* gb, short* tile, int* output, unsigned short palett
   }
 }
 
-int compare_priority(const void* a, const void* b) {
+void render_tile_to_scanline(
+  Gameboy* gb,
+  int tile_bank_no,
+  int tile_no,
+  int tile_y,
+  int dest_x,
+  bool x_flip,
+  int palette_reg,
+  unsigned int* scanline_rgb
+) {
+  int tile_rgb[8 * 8];
+  short* tile_data = (short*)(tile_bank_no ? &VIDEO_TILE_1(gb, tile_no) : &VIDEO_TILE_0(gb, tile_no));
+  tile_to_rgb(gb, tile_data, tile_rgb, palette_reg);
+
+  for (int c = 0; c < 8; c++) {
+    int src_index = tile_y * 8 + (x_flip ? 7 - c : c);
+    assert(src_index >= 0);
+    assert(src_index < 64);
+
+    int x = dest_x + c;
+
+    if (x >= 0 && x < GB_SCREEN_WIDTH) {
+      scanline_rgb[x] = tile_rgb[src_index];
+    }
+  }
+}
+
+int compare_sprite_priority(const void* a, const void* b) {
   const sprite* sprite_a = (const sprite*)a;
   const sprite* sprite_b = (const sprite*)b;
 
   // First x, then table order.
-  if (sprite_a->x < sprite_b->x) {
+  if (sprite_a->xpluswidth < sprite_b->xpluswidth) {
     return -1;
   }
 
-  if (sprite_a->x > sprite_b->x) {
+  if (sprite_a->xpluswidth > sprite_b->xpluswidth) {
     return 1;
   }
 
@@ -140,6 +167,45 @@ void gameboy_draw_scanline(Gameboy* gb) {
   if (BIT(gb->memory[REG_LCDC], 0)) {
     // Draw background and/or window.
 
+    int bg_tile_map_no = BIT(gb->memory[REG_LCDC], 3);
+    int bg_tile_bank_no = BIT(gb->memory[REG_LCDC], 4);
+
+    int SCX = gb->memory[REG_SCX];
+    int SCY = gb->memory[REG_SCY];
+
+    /* printf("bg_tile_map_no: %d, bg_tile_bank_no: %d\n",  bg_tile_map_no, bg_tile_bank_no); */
+
+    // Over-render tiles by 2x to account for wrapping.
+    for (int bg_col = 0; bg_col < 64; bg_col++) {
+      for (int bg_row = 0; bg_row < 64; bg_row++) {
+        int src_y = LY - bg_row * 8 + SCY;
+
+        if (src_y >= 0 && src_y < 8) {
+          int tile_no = VIDEO_BG_MAP(gb, bg_tile_map_no, bg_col % 32, bg_row % 32);
+          /* printf( */
+          /*   "bg_col: %d, bg_row: %d, src_y: %d, LY: %d, SCX: %d, SCY: %d, tile_no: %d\n", */
+          /*   bg_col, */
+          /*   bg_row, */
+          /*   src_y, */
+          /*   SCX, */
+          /*   SCY, */
+          /*   LY, */
+          /*   tile_no */
+          /* ); */
+          render_tile_to_scanline(
+              gb,
+              bg_tile_bank_no,
+              tile_no,
+              src_y,
+              bg_col * 8 - SCX,
+              0,
+              REG_BGP,
+              scanline_rgb
+              );
+        }
+      }
+    }
+
     if (BIT(gb->memory[REG_LCDC], 5)) {
       // Draw window.
     }
@@ -152,7 +218,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
 
     sprite sprites[VIDEO_OAM_NUM_SPRITES];
     memcpy(sprites, &gb->memory[0xfe00], VIDEO_OAM_NUM_SPRITES * 4);
-    qsort(sprites, VIDEO_OAM_NUM_SPRITES, 4, compare_priority);
+    qsort(sprites, VIDEO_OAM_NUM_SPRITES, 4, compare_sprite_priority);
 
     unsigned char indices_to_render[10];
     memset(indices_to_render, -1, 10);
@@ -162,13 +228,13 @@ void gameboy_draw_scanline(Gameboy* gb) {
     for (int i = 0; i < VIDEO_OAM_NUM_SPRITES && num_sprites_on_line < 10; i++) {
       sprite* sprite = &sprites[i];
 
-      int bottom_y = sprite->y - 1;
-      int top_y = sprite->y - (large_sprites ? 16 : 8);
+      int bottom_y = sprite->yplusheight - 1;
+      int top_y = sprite->yplusheight - (large_sprites ? 16 : 8);
 
       /* printf( */
-      /*   "x: %d, y: %d, flip: %d, LY: %d, top_y: %d, bottom_y: %d\n", */
-      /*   sprite->x, */
-      /*   sprite->y, */
+      /*   "x + width: %d, y + height: %d, flip: %d, LY: %d, top_y: %d, bottom_y: %d\n", */
+      /*   sprite->xpluswidth, */
+      /*   sprite->yplusheight, */
       /*   VIDEO_OAM_Y_FLIP(sprite->attributes), */
       /*   LY, */
       /*   top_y, */
@@ -191,20 +257,9 @@ void gameboy_draw_scanline(Gameboy* gb) {
 
       sprite* sprite = &sprites[indices_to_render[i]];
 
-      int bottom_y = sprite->y - 1;
-      int top_y = sprite->y - (large_sprites ? 16 : 8);
+      int bottom_y = sprite->yplusheight - 1;
+      int top_y = sprite->yplusheight - (large_sprites ? 16 : 8);
       int src_y = VIDEO_OAM_Y_FLIP(sprite->attributes) ? bottom_y - LY : LY - top_y;
-
-      printf(
-        "rendering: index: %d, sorted_sprite_index: %d, x: %d, y: %d, flip: %d, large_sprites: %d, LY: %d\n",
-        i,
-        indices_to_render[i],
-        sprite->x,
-        sprite->y,
-        VIDEO_OAM_Y_FLIP(sprite->attributes),
-        large_sprites,
-        LY
-      );
 
       assert(src_y >= 0);
       if (large_sprites)
@@ -224,25 +279,32 @@ void gameboy_draw_scanline(Gameboy* gb) {
         tile_no = sprite->tile;
       }
 
-      printf("Tile no: %d\n", tile_no);
-
       assert(tile_no <= 255);
 
-      int tile_data[8 * 8];
-      tile_to_colors(gb, (short*)&VIDEO_TILE_0(gb, tile_no), tile_data, VIDEO_OAM_PALETTE_NUMBER(sprite->attributes) ? REG_OBP1 : REG_OBP0);
+      /* printf( */
+      /*     "rendering: index: %d, sorted_sprite_index: %d, tile_index: %d, x plus width: %d, y plus height: %d, flip: %d, large_sprites: %d, LY: %d\n", */
+      /*     i, */
+      /*     indices_to_render[i], */
+      /*     tile_no, */
+      /*     sprite->xpluswidth, */
+      /*     sprite->yplusheight, */
+      /*     VIDEO_OAM_Y_FLIP(sprite->attributes), */
+      /*     large_sprites, */
+      /*     LY */
+      /*     ); */
 
-      for (int c = 0; c < 8; c++) {
-        int src_index = src_y * 8 + (VIDEO_OAM_X_FLIP(sprite->attributes) ? 7 - c : c);
-        printf("src index: %d\n", src_index);
-        assert(src_index >= 0);
-        assert(src_index < 64);
+      // TODO: OBJ-TO-BG priority.
 
-        int dest_x = sprite->x - 8 + c;
-
-        if (dest_x >= 0 && dest_x < GB_SCREEN_WIDTH) {
-          scanline_rgb[dest_x] = tile_data[src_index];
-        }
-      }
+      render_tile_to_scanline(
+        gb,
+        1, // DMG only reads from Tile Bank 1.
+        tile_no,
+        src_y,
+        sprite->xpluswidth - 8,
+        VIDEO_OAM_X_FLIP(sprite->attributes),
+        VIDEO_OAM_PALETTE_NUMBER(sprite->attributes) ? REG_OBP1 : REG_OBP0,
+        scanline_rgb
+      );
     }
   }
 

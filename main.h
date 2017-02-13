@@ -108,8 +108,8 @@ void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data,
 #define GB_SCREEN_HEIGHT (144)
 
 typedef struct {
-  unsigned char y;
-  unsigned char x;
+  unsigned char yplusheight;
+  unsigned char xpluswidth;
   unsigned char tile;
   unsigned char attributes;
 } sprite;
@@ -121,5 +121,7 @@ typedef struct {
 
 #define VIDEO_OAM_NUM_SPRITES (40)
 
-#define VIDEO_TILE_0(gb, t) (gb->memory[0x8000 + (t) * 16])
-#define VIDEO_TILE_1(gb, t) (gb->memory[0x8800 + ((unsigned char)t + 128) * 16])
+#define VIDEO_TILE_0(gb, t) (gb->memory[0x8800 + ((unsigned char)t + 128) * 16])
+#define VIDEO_TILE_1(gb, t) (gb->memory[0x8000 + (t) * 16])
+
+#define VIDEO_BG_MAP(gb, map, x, y) (gb->memory[((map) ? 0x9c00 : 0x9800) + (y) * 32 + (x)])
