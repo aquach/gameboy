@@ -124,7 +124,7 @@ typedef struct {
 
 #define VIDEO_OAM_NUM_SPRITES (40)
 
-#define VIDEO_TILE_0(gb, t) (gb->memory[0x8800 + ((unsigned char)t + 128) * 16])
+#define VIDEO_TILE_0(gb, t) (gb->memory[0x8800 + ((char)t + 128) * 16])
 #define VIDEO_TILE_1(gb, t) (gb->memory[0x8000 + (t) * 16])
 
 #define VIDEO_BG_MAP(gb, map, x, y) (gb->memory[((map) ? 0x9c00 : 0x9800) + (y) * 32 + (x)])

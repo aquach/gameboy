@@ -30,6 +30,7 @@ void gameboy_initialize_sdl(Gameboy* gb) {
   }
 
   SDL_Surface* window_surface = SDL_GetWindowSurface(window);
+  SDL_SetSurfaceBlendMode(window_surface, SDL_BLENDMODE_BLEND);
 
   gb->window = window;
   gb->window_surface = window_surface;
@@ -83,24 +84,29 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
       assert(color_number >= 0);
       assert(color_number <= 3);
 
-      int shade = (gb->memory[palette_reg] >> (color_number * 2)) & 0x3;
-
       int color;
-      switch (shade) {
-        case 0:
-          color = 0x00ffffff;
-          break;
-        case 1:
-          color = 0x00aaaaaa;
-          break;
-        case 2:
-          color = 0x00333333;
-          break;
-        case 3:
-          color = 0x00000000;
-          break;
-        default:
-          assert(false);
+
+      if (color_number == 0 && (palette_reg == REG_OBP0 || palette_reg == REG_OBP1)) {
+        // Color number 0 is transparent for sprites.
+        color = 0x00000000;
+      } else {
+        int shade = (gb->memory[palette_reg] >> (color_number * 2)) & 0x3;
+        switch (shade) {
+          case 0:
+            color = 0x00ffffff;
+            break;
+          case 1:
+            color = 0xffaaaaaa;
+            break;
+          case 2:
+            color = 0xff333333;
+            break;
+          case 3:
+            color = 0xff000000;
+            break;
+          default:
+            assert(false);
+        }
       }
 
       output[l * 8 + c] = color;
@@ -111,12 +117,12 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
 void render_tile_to_scanline(
   Gameboy* gb,
   int tile_bank_no,
-  int tile_no,
+  unsigned char tile_no,
   int tile_y,
   int dest_x,
   bool x_flip,
   int palette_reg,
-  unsigned int* scanline_rgb
+  unsigned int* scanline_rgba
 ) {
   int tile_rgb[8 * 8];
   short* tile_data = (short*)(tile_bank_no ? &VIDEO_TILE_1(gb, tile_no) : &VIDEO_TILE_0(gb, tile_no));
@@ -130,7 +136,7 @@ void render_tile_to_scanline(
     int x = dest_x + c;
 
     if (x >= 0 && x < GB_SCREEN_WIDTH) {
-      scanline_rgb[x] = tile_rgb[src_index];
+      scanline_rgba[x] = tile_rgb[src_index];
     }
   }
 }
@@ -161,13 +167,13 @@ int compare_sprite_priority(const void* a, const void* b) {
 }
 
 void gameboy_draw_scanline(Gameboy* gb) {
-  unsigned int scanline_rgb[GB_SCREEN_WIDTH];
-  memset(scanline_rgb, 0xff, GB_SCREEN_WIDTH * 4);
+  unsigned int scanline_rgba[GB_SCREEN_WIDTH];
+  memset(scanline_rgba, 0xff, GB_SCREEN_WIDTH * 4);
 
   int LY = gb->memory[REG_LY];
 
   if (BIT(gb->memory[REG_LCDC], 0)) {
-    // Draw background and/or window.
+    // Draw background.
 
     int bg_tile_map_no = BIT(gb->memory[REG_LCDC], 3);
     int bg_tile_bank_no = BIT(gb->memory[REG_LCDC], 4);
@@ -202,14 +208,41 @@ void gameboy_draw_scanline(Gameboy* gb) {
               bg_col * 8 - SCX,
               0,
               REG_BGP,
-              scanline_rgb
+              scanline_rgba
               );
         }
       }
     }
+  }
 
-    if (BIT(gb->memory[REG_LCDC], 5)) {
-      // Draw window.
+  if (BIT(gb->memory[REG_LCDC], 5)) {
+    // Draw window.
+
+    int window_tile_map_no = BIT(gb->memory[REG_LCDC], 6);
+    int window_tile_bank_no = BIT(gb->memory[REG_LCDC], 4);
+
+    int WX = gb->memory[REG_WX];
+    int WY = gb->memory[REG_WY];
+
+    for (int window_col = 0; window_col < 32; window_col++) {
+      for (int window_row = 0; window_row < 32; window_row++) {
+        int src_y = LY - window_row * 8 - WY;
+
+        if (src_y >= 0 && src_y < 8) {
+          unsigned char tile_no = VIDEO_BG_MAP(gb, window_tile_map_no, window_col, window_row);
+
+          render_tile_to_scanline(
+              gb,
+              window_tile_bank_no,
+              tile_no,
+              src_y,
+              window_col * 8 + WX - 7,
+              0,
+              REG_BGP,
+              scanline_rgba
+              );
+        }
+      }
     }
   }
 
@@ -234,7 +267,8 @@ void gameboy_draw_scanline(Gameboy* gb) {
       int top_y = sprite->yplusheight - (large_sprites ? 16 : 8);
 
       /* printf( */
-      /*   "x + width: %d, y + height: %d, flip: %d, LY: %d, top_y: %d, bottom_y: %d\n", */
+      /*   "i: %d, x + width: %d, y + height: %d, flip: %d, LY: %d, top_y: %d, bottom_y: %d\n", */
+      /*   i, */
       /*   sprite->xpluswidth, */
       /*   sprite->yplusheight, */
       /*   VIDEO_OAM_Y_FLIP(sprite->attributes), */
@@ -305,14 +339,14 @@ void gameboy_draw_scanline(Gameboy* gb) {
         sprite->xpluswidth - 8,
         VIDEO_OAM_X_FLIP(sprite->attributes),
         VIDEO_OAM_PALETTE_NUMBER(sprite->attributes) ? REG_OBP1 : REG_OBP0,
-        scanline_rgb
+        scanline_rgba
       );
     }
   }
 
   // Blit scanline.
   SDL_Surface* scanline_surface = SDL_CreateRGBSurfaceFrom(
-      scanline_rgb,
+      scanline_rgba,
       GB_SCREEN_WIDTH,
       1,
       32,
@@ -320,12 +354,12 @@ void gameboy_draw_scanline(Gameboy* gb) {
       0x000000ff,
       0x0000ff00,
       0x00ff0000,
-      0
+      0xff000000
       );
+  SDL_SetSurfaceBlendMode(scanline_surface, SDL_BLENDMODE_BLEND);
 
   SDL_Rect dest_rect = { .x = 0, .w = GB_SCREEN_WIDTH, .y = LY, .h = 1 };
   sdl_assert(SDL_BlitSurface(scanline_surface, NULL, gb->window_surface, &dest_rect));
-  sdl_assert(SDL_UpdateWindowSurface(gb->window));
 
   SDL_FreeSurface(scanline_surface);
 }
@@ -383,6 +417,8 @@ void gameboy_step_clock(Gameboy* gb) {
     }
 
     if (gb->memory[REG_LY] == 144) {// && BIT(gb->memory[REG_STAT], 4)) {
+      sdl_assert(SDL_UpdateWindowSurface(gb->window));
+
       // Trigger VBlank.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
     } else if (gb->memory[REG_LY] == gb->memory[REG_LYC] && BIT(gb->memory[REG_STAT], 6)) {
