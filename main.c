@@ -1,6 +1,7 @@
 #include "main.h"
 
 char DEBUG = 0;
+int GB_TO_PC_SCALE = 4;
 
 void sdl_assert(int result) {
   if (result != 0) {
@@ -19,8 +20,8 @@ void gameboy_initialize_sdl(Gameboy* gb) {
       "Gameboy",
       100,
       100,
-      GB_SCREEN_WIDTH,
-      GB_SCREEN_HEIGHT,
+      GB_SCREEN_WIDTH * GB_TO_PC_SCALE,
+      GB_SCREEN_HEIGHT * GB_TO_PC_SCALE,
       SDL_WINDOW_SHOWN
       );
   if (window == NULL) {
@@ -344,13 +345,21 @@ void gameboy_draw_scanline(Gameboy* gb) {
     }
   }
 
+  unsigned int scaled_scanline_rgba[GB_SCREEN_WIDTH * GB_TO_PC_SCALE * GB_TO_PC_SCALE];
+
+  for (int pc_y = 0; pc_y < GB_TO_PC_SCALE; pc_y++) {
+    for (int pc_x = 0; pc_x < GB_SCREEN_WIDTH * GB_TO_PC_SCALE; pc_x++) {
+      scaled_scanline_rgba[pc_y * GB_SCREEN_WIDTH * GB_TO_PC_SCALE + pc_x] = scanline_rgba[pc_x / GB_TO_PC_SCALE];
+    }
+  }
+
   // Blit scanline.
   SDL_Surface* scanline_surface = SDL_CreateRGBSurfaceFrom(
-      scanline_rgba,
-      GB_SCREEN_WIDTH,
-      1,
+      scaled_scanline_rgba,
+      GB_SCREEN_WIDTH * GB_TO_PC_SCALE,
+      GB_TO_PC_SCALE,
       32,
-      4 * GB_SCREEN_WIDTH,
+      4 * GB_SCREEN_WIDTH * GB_TO_PC_SCALE,
       0x000000ff,
       0x0000ff00,
       0x00ff0000,
@@ -358,7 +367,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
       );
   SDL_SetSurfaceBlendMode(scanline_surface, SDL_BLENDMODE_BLEND);
 
-  SDL_Rect dest_rect = { .x = 0, .w = GB_SCREEN_WIDTH, .y = LY, .h = 1 };
+  SDL_Rect dest_rect = { .x = 0, .w = GB_SCREEN_WIDTH * GB_TO_PC_SCALE, .y = LY * GB_TO_PC_SCALE, .h = GB_TO_PC_SCALE };
   sdl_assert(SDL_BlitSurface(scanline_surface, NULL, gb->window_surface, &dest_rect));
 
   SDL_FreeSurface(scanline_surface);
@@ -471,7 +480,6 @@ void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
   assert(fp != NULL);
   fread(gb->memory, 0x8000, 1, fp);
 }
-
 
 int main(int argc, char **argv) {
   if (argc != 2) {
