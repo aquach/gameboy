@@ -78,8 +78,15 @@ void gameboy_initialize(Gameboy* gb) {
   gameboy_initialize_sdl(gb);
 }
 
+char TILE_TO_RGB_DEBUG = 0;
+
 void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
+  if (TILE_TO_RGB_DEBUG)
+    printf("Palette: 0x%02x\n", gb->memory[palette_reg]);
+
   for (int l = 0; l < 8; l++) {
+    if (TILE_TO_RGB_DEBUG)
+      printf("Tile row %d: %04x\n", l, tile[l]);
     for (int c = 0; c < 8; c++) {
       int color_number = BIT(tile[l], 15 - c) | BIT(tile[l], 7 - c) << 1;
       assert(color_number >= 0);
@@ -97,10 +104,10 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
             color = 0x00ffffff;
             break;
           case 1:
-            color = 0xffaaaaaa;
+            color = 0xffa8a8a8;
             break;
           case 2:
-            color = 0xff333333;
+            color = 0xff555555;
             break;
           case 3:
             color = 0xff000000;
@@ -111,6 +118,8 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
       }
 
       output[l * 8 + c] = color;
+      if (TILE_TO_RGB_DEBUG)
+        printf("Tile output %d, %d: %08x\n", l, c, color);
     }
   }
 }
