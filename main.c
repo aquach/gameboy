@@ -384,7 +384,21 @@ void gameboy_draw_scanline(Gameboy* gb) {
 }
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
-  memcpy(output, gb->memory + address, len);
+  if (address == REG_JOYP) {
+    bool use_button_keys = !BIT(gb->memory[REG_JOYP], 5);
+    bool use_direction_keys = !BIT(gb->memory[REG_JOYP], 4);
+
+    const unsigned char* state = SDL_GetKeyboardState(NULL);
+    bool down_start = (use_direction_keys && state[SDL_SCANCODE_DOWN]) || (use_button_keys && state[SDL_SCANCODE_RETURN]);
+    bool up_select = (use_direction_keys && state[SDL_SCANCODE_UP]) || (use_button_keys && state[SDL_SCANCODE_BACKSPACE]);
+    bool left_b = (use_direction_keys && state[SDL_SCANCODE_LEFT]) || (use_button_keys && state[SDL_SCANCODE_X]);
+    bool right_a = (use_direction_keys && state[SDL_SCANCODE_RIGHT]) || (use_button_keys && state[SDL_SCANCODE_Z]);
+
+    unsigned char reg_value = (!use_button_keys << 5) | (!use_direction_keys << 4) | (!down_start << 3) | (!up_select << 2) | (!left_b << 1) | !right_a;
+    memcpy(output, &reg_value, 1);
+  } else {
+    memcpy(output, gb->memory + address, len);
+  }
 }
 
 void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len) {
@@ -484,6 +498,9 @@ void gameboy_step_clock(Gameboy* gb) {
   gb->ticks_to_next_instruction = num_cycles - 1;
 }
 
+void gameboy_keydown(SDL_Keycode code) {
+}
+
 void gameboy_load_rom_from_file(Gameboy* gb, const char* rom_path) {
   printf("Loading ROM from path: %s\n", rom_path);
   FILE* fp = fopen(rom_path, "r");
@@ -511,6 +528,9 @@ int main(int argc, char **argv) {
       switch (event.type) {
         case SDL_QUIT:
           quit = true;
+          break;
+        case SDL_KEYDOWN:
+          gameboy_keydown(((SDL_KeyboardEvent*)&event)->keysym.sym);
           break;
       }
     }

@@ -42,6 +42,7 @@ typedef struct {
   SDL_Surface* window_surface;
 } Gameboy;
 
+#define REG_JOYP (0xFF00)
 #define REG_SB (0xFF01)
 #define REG_SC (0xFF02)
 #define REG_DIV (0xFF04)
