@@ -80,15 +80,17 @@ void gameboy_initialize(Gameboy* gb) {
 
 char TILE_TO_RGB_DEBUG = 0;
 
-void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
+void tile_to_rgba(Gameboy* gb, short* tile, int* output, unsigned short palette_reg) {
   if (TILE_TO_RGB_DEBUG)
     printf("Palette: 0x%02x\n", gb->memory[palette_reg]);
 
   for (int l = 0; l < 8; l++) {
+    unsigned char* line = (unsigned char*)&tile[l];
+
     if (TILE_TO_RGB_DEBUG)
-      printf("Tile row %d: %04x\n", l, tile[l]);
+      printf("Tile row %d: %02x%02x\n", l, line[0], line[1]);
+
     for (int c = 0; c < 8; c++) {
-      char* line = (char*)&tile[l];
       int color_number = BIT(line[0], 7 - c) | BIT(line[1], 7 - c) << 1;
       assert(color_number >= 0);
       assert(color_number <= 3);
@@ -135,9 +137,9 @@ void render_tile_to_scanline(
   int palette_reg,
   unsigned int* scanline_rgba
 ) {
-  int tile_rgb[8 * 8];
+  int tile_rgba[8 * 8];
   short* tile_data = (short*)(tile_bank_no ? &VIDEO_TILE_1(gb, tile_no) : &VIDEO_TILE_0(gb, tile_no));
-  tile_to_rgb(gb, tile_data, tile_rgb, palette_reg);
+  tile_to_rgba(gb, tile_data, tile_rgba, palette_reg);
 
   for (int c = 0; c < 8; c++) {
     int src_index = tile_y * 8 + (x_flip ? 7 - c : c);
@@ -146,8 +148,8 @@ void render_tile_to_scanline(
 
     int x = dest_x + c;
 
-    if (x >= 0 && x < GB_SCREEN_WIDTH) {
-      scanline_rgba[x] = tile_rgb[src_index];
+    if (x >= 0 && x < GB_SCREEN_WIDTH && tile_rgba[src_index] != 0) {
+      scanline_rgba[x] = tile_rgba[src_index];
     }
   }
 }
@@ -289,7 +291,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
       /* ); */
 
       if (LY >= top_y && LY <= bottom_y) {
-        /* printf("Choosing to render %d\n", i); */
+        /* printf("Choosing to render sprite at sorted index %d\n", i); */
         indices_to_render[num_sprites_on_line] = i;
         num_sprites_on_line++;
       }
@@ -329,7 +331,7 @@ void gameboy_draw_scanline(Gameboy* gb) {
       assert(tile_no <= 255);
 
       /* printf( */
-      /*     "rendering: index: %d, sorted_sprite_index: %d, tile_index: %d, x plus width: %d, y plus height: %d, flip: %d, large_sprites: %d, LY: %d\n", */
+      /*     "rendering: index: %d, sorted_sprite_index: %d, tile_no: %d, x plus width: %d, y plus height: %d, flip: %d, large_sprites: %d, LY: %d\n", */
       /*     i, */
       /*     indices_to_render[i], */
       /*     tile_no, */
@@ -417,7 +419,7 @@ void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data,
     } else if (address == REG_DMA) {
       unsigned char src = *data;
       unsigned short src_start = src << 8;
-      memcpy(&gb->memory[0xfe00], &gb->memory[src_start], 0x9f);
+      memcpy(&gb->memory[0xfe00], &gb->memory[src_start], 0x100);
     } else {
       gb->memory[address] = *data;
     }
