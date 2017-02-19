@@ -88,7 +88,8 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
     if (TILE_TO_RGB_DEBUG)
       printf("Tile row %d: %04x\n", l, tile[l]);
     for (int c = 0; c < 8; c++) {
-      int color_number = BIT(tile[l], 15 - c) | BIT(tile[l], 7 - c) << 1;
+      char* line = (char*)&tile[l];
+      int color_number = BIT(line[0], 7 - c) | BIT(line[1], 7 - c) << 1;
       assert(color_number >= 0);
       assert(color_number <= 3);
 
@@ -101,7 +102,7 @@ void tile_to_rgb(Gameboy* gb, short* tile, int* output, unsigned short palette_r
         int shade = (gb->memory[palette_reg] >> (color_number * 2)) & 0x3;
         switch (shade) {
           case 0:
-            color = 0x00ffffff;
+            color = 0xffffffff;
             break;
           case 1:
             color = 0xffa8a8a8;
