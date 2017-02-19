@@ -31,7 +31,6 @@ void gameboy_initialize_sdl(Gameboy* gb) {
   }
 
   SDL_Surface* window_surface = SDL_GetWindowSurface(window);
-  SDL_SetSurfaceBlendMode(window_surface, SDL_BLENDMODE_BLEND);
 
   gb->window = window;
   gb->window_surface = window_surface;
@@ -375,9 +374,8 @@ void gameboy_draw_scanline(Gameboy* gb) {
       0x000000ff,
       0x0000ff00,
       0x00ff0000,
-      0xff000000
+      0x00000000
       );
-  SDL_SetSurfaceBlendMode(scanline_surface, SDL_BLENDMODE_BLEND);
 
   SDL_Rect dest_rect = { .x = 0, .w = GB_SCREEN_WIDTH * GB_TO_PC_SCALE, .y = LY * GB_TO_PC_SCALE, .h = GB_TO_PC_SCALE };
   sdl_assert(SDL_BlitSurface(scanline_surface, NULL, gb->window_surface, &dest_rect));
