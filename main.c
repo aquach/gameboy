@@ -498,6 +498,11 @@ void gameboy_step_clock(Gameboy* gb) {
     }
   }
 
+  if (gb->global_simulated_ticks % 456 == 247 && BIT(gb->memory[REG_STAT], 3)) {
+    // Trigger STAT.
+    gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
+  }
+
   // Handle interrupts.
   unsigned char IE = gb->memory[REG_IE];
   unsigned char IF = gb->memory[REG_IF];
