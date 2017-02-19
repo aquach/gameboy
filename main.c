@@ -1,6 +1,6 @@
 #include "main.h"
 
-char DEBUG = 0;
+char DEBUG = false;
 int GB_TO_PC_SCALE = 4;
 
 void sdl_assert(int result) {
@@ -384,32 +384,46 @@ void gameboy_draw_scanline(Gameboy* gb) {
 }
 
 void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output, int len) {
-  if (address == REG_JOYP) {
-    bool use_button_keys = !BIT(gb->memory[REG_JOYP], 5);
-    bool use_direction_keys = !BIT(gb->memory[REG_JOYP], 4);
+  for (int i = 0; i < len; i++) {
+    if (address == REG_JOYP) {
+      bool use_button_keys = !BIT(gb->memory[REG_JOYP], 5);
+      bool use_direction_keys = !BIT(gb->memory[REG_JOYP], 4);
 
-    const unsigned char* state = SDL_GetKeyboardState(NULL);
-    bool down_start = (use_direction_keys && state[SDL_SCANCODE_DOWN]) || (use_button_keys && state[SDL_SCANCODE_RETURN]);
-    bool up_select = (use_direction_keys && state[SDL_SCANCODE_UP]) || (use_button_keys && state[SDL_SCANCODE_BACKSPACE]);
-    bool left_b = (use_direction_keys && state[SDL_SCANCODE_LEFT]) || (use_button_keys && state[SDL_SCANCODE_X]);
-    bool right_a = (use_direction_keys && state[SDL_SCANCODE_RIGHT]) || (use_button_keys && state[SDL_SCANCODE_Z]);
+      const unsigned char* state = SDL_GetKeyboardState(NULL);
+      bool down_start = (use_direction_keys && state[SDL_SCANCODE_DOWN]) || (use_button_keys && state[SDL_SCANCODE_RETURN]);
+      bool up_select = (use_direction_keys && state[SDL_SCANCODE_UP]) || (use_button_keys && state[SDL_SCANCODE_BACKSPACE]);
+      bool left_b = (use_direction_keys && state[SDL_SCANCODE_LEFT]) || (use_button_keys && state[SDL_SCANCODE_X]);
+      bool right_a = (use_direction_keys && state[SDL_SCANCODE_RIGHT]) || (use_button_keys && state[SDL_SCANCODE_Z]);
 
-    unsigned char reg_value = (!use_button_keys << 5) | (!use_direction_keys << 4) | (!down_start << 3) | (!up_select << 2) | (!left_b << 1) | !right_a;
-    memcpy(output, &reg_value, 1);
-  } else {
-    memcpy(output, gb->memory + address, len);
+      unsigned char reg_value = (!use_button_keys << 5) | (!use_direction_keys << 4) | (!down_start << 3) | (!up_select << 2) | (!left_b << 1) | !right_a;
+      *output = reg_value;
+    } else {
+      *output = gb->memory[address];
+    }
+
+    output++;
+    address++;
   }
 }
 
 void gameboy_write_mem(Gameboy* gb, unsigned short address, unsigned char* data, int len) {
-  if (address == REG_SC) {
-    printf("%c", gb->memory[REG_SB]);
-  } else if (address == REG_DIV) {
-    gb->memory[REG_DIV] = 0;
-  } else if (address == REG_LY) {
-    gb->memory[REG_LY] = 0;
-  } else {
-    memcpy(gb->memory + address, data, len);
+  for (int i = 0; i < len; i++) {
+    if (address == REG_SC) {
+      printf("%c", gb->memory[REG_SB]);
+    } else if (address == REG_DIV) {
+      gb->memory[REG_DIV] = 0;
+    } else if (address == REG_LY) {
+      gb->memory[REG_LY] = 0;
+    } else if (address == REG_DMA) {
+      unsigned char src = *data;
+      unsigned short src_start = src << 8;
+      memcpy(&gb->memory[0xfe00], &gb->memory[src_start], 0x9f);
+    } else {
+      gb->memory[address] = *data;
+    }
+
+    data++;
+    address++;
   }
 }
 
@@ -530,7 +544,15 @@ int main(int argc, char **argv) {
           quit = true;
           break;
         case SDL_KEYDOWN:
-          gameboy_keydown(((SDL_KeyboardEvent*)&event)->keysym.sym);
+          {
+            SDL_Keycode code = ((SDL_KeyboardEvent*)&event)->keysym.sym;
+            if (code == SDLK_ESCAPE)
+              quit = true;
+            else if (code == SDLK_F1)
+              DEBUG = true;
+            else
+              gameboy_keydown(code);
+          }
           break;
       }
     }

@@ -2384,6 +2384,7 @@ int gameboy_execute_instruction(Gameboy* gb) {
       break;
 
     default:
+      printf("Encountered unknown opcode 0x%02x at PC 0x%04x.\n", opcode, gb->PC - 1);
       assert(false);
   }
 
