@@ -37,7 +37,7 @@ void gameboy_initialize_sdl(Gameboy* gb) {
 }
 
 void gameboy_initialize(Gameboy* gb) {
-  memset(gb->memory, 0, 65536);
+  memset(gb->memory, 0xff, 65536);
   *CPU_AF_REF(gb) = 0x01B0;
   *CPU_BC_REF(gb) = 0x0013;
   *CPU_DE_REF(gb) = 0x00D8;
@@ -397,6 +397,23 @@ void gameboy_read_mem(Gameboy* gb, unsigned short address, unsigned char* output
 
       unsigned char reg_value = (!use_button_keys << 5) | (!use_direction_keys << 4) | (!down_start << 3) | (!up_select << 2) | (!left_b << 1) | !right_a;
       *output = reg_value;
+    } else if (address == REG_STAT) {
+      bool coincidence = gb->memory[REG_LY] == gb->memory[REG_LYC];
+      bool in_vblank = gb->memory[REG_LY] >= 144;
+      int draw_mode;
+      if (in_vblank) {
+        draw_mode = 1;
+      } else {
+        int cycle = gb->global_simulated_ticks % 456;
+        if (cycle <= 77)
+          draw_mode = 2;
+        else if (cycle <= 169 + 77)
+          draw_mode = 3;
+        else
+          draw_mode = 0;
+      }
+
+      *output = (gb->memory[REG_STAT] & 0xf8) | coincidence << 2 | (draw_mode & 0x3);
     } else {
       *output = gb->memory[address];
     }
@@ -463,12 +480,19 @@ void gameboy_step_clock(Gameboy* gb) {
       gb->memory[REG_LY] = 0;
     }
 
-    if (gb->memory[REG_LY] == 144) {// && BIT(gb->memory[REG_STAT], 4)) {
+    if (gb->memory[REG_LY] == 144) {
       sdl_assert(SDL_UpdateWindowSurface(gb->window));
 
       // Trigger VBlank.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
-    } else if (gb->memory[REG_LY] == gb->memory[REG_LYC] && BIT(gb->memory[REG_STAT], 6)) {
+    }
+
+    if (gb->memory[REG_LY] == gb->memory[REG_LYC] && BIT(gb->memory[REG_STAT], 6)) {
+      // Trigger STAT.
+      gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
+    }
+
+    if (gb->memory[REG_LY] == 144 && BIT(gb->memory[REG_STAT], 4)) {
       // Trigger STAT.
       gb->memory[REG_IF] = SET_BIT(gb->memory[REG_IF], 0);
     }
